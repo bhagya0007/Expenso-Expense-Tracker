@@ -17,25 +17,16 @@ const guestStore: Store = EMPTY();
 
 const storeKey = (uid: string) => `expenso:data:${uid}`;
 
-function withTimeout<T>(promise: Promise<T>, ms = 1200): Promise<T> {
+function withTimeout<T>(promise: Promise<T>, ms = 8000): Promise<T> {
   return Promise.race([
     promise,
     new Promise<T>((_, reject) => setTimeout(() => reject(new Error("Timeout")), ms)),
   ]);
 }
 
-async function currentUid(): Promise<string | null> {
-  if (auth.currentUser?.uid) return auth.currentUser.uid;
-  if (typeof window !== "undefined") {
-    const raw = localStorage.getItem("expenso:local_session");
-    if (raw) {
-      try {
-        const parsed = JSON.parse(raw);
-        if (parsed?.uid || parsed?.id) return parsed.uid || parsed.id;
-      } catch {}
-    }
-  }
-  return null;
+function currentUid(): string | null {
+  if (typeof window === "undefined") return null;
+  return auth.currentUser?.uid ?? null;
 }
 
 function read(uid: string | null): Store {
@@ -60,8 +51,8 @@ function write(uid: string | null, s: Store) {
   localStorage.setItem(storeKey(uid), JSON.stringify(s));
 }
 
-async function mutate(fn: (s: Store) => Store): Promise<Store> {
-  const uid = await currentUid();
+function mutate(fn: (s: Store) => Store): Store {
+  const uid = currentUid();
   const next = fn(read(uid));
   write(uid, next);
   return next;
@@ -147,12 +138,12 @@ function computeInsights(txs: Transaction[]): Insight[] {
 export const api = {
   // --- transactions ---
   async listTransactions(): Promise<Transaction[]> {
-    const uid = await currentUid();
+    const uid = currentUid();
     const local = read(uid).transactions;
     if (uid) {
       try {
         const colRef = collection(db, "users", uid, "transactions");
-        const snap = await withTimeout(getDocs(colRef), 1200);
+        const snap = await withTimeout(getDocs(colRef));
         if (!snap.empty) {
           const remote: Transaction[] = snap.docs.map((docSnap) => {
             const data = docSnap.data();
@@ -170,6 +161,7 @@ export const api = {
           });
           const remoteIds = new Set(remote.map((t) => t.id));
           const combined = [...remote, ...local.filter((t) => !remoteIds.has(t.id))];
+          write(uid, { ...read(uid), transactions: combined });
           return combined.sort((a, b) => +new Date(b.date) - +new Date(a.date));
         }
       } catch (err) {
@@ -181,13 +173,16 @@ export const api = {
 
   async createTransaction(input: Omit<Transaction, "id">): Promise<Transaction> {
     const tx: Transaction = { ...input, id: `tx-${Date.now()}-${Math.random().toString(36).slice(2, 7)}` };
-    const uid = await currentUid();
-    await mutate((s) => ({ ...s, transactions: [tx, ...s.transactions] }));
+    const uid = currentUid();
+    mutate((s) => ({ ...s, transactions: [tx, ...s.transactions] }));
     if (uid) {
-      ensureUserDoc(uid).then(() => {
+      try {
+        await ensureUserDoc(uid);
         const docRef = doc(db, "users", uid, "transactions", tx.id);
-        setDoc(docRef, { ...tx }).catch((err) => console.error("Firestore setDoc tx error:", err));
-      });
+        await setDoc(docRef, { ...tx });
+      } catch (err) {
+        console.error("Firestore setDoc tx error:", err);
+      }
     }
     return tx;
   },
@@ -200,48 +195,59 @@ export const api = {
     for (let i = 0; i < inputs.length; i++) {
       txs[i] = { ...inputs[i], id: `tx-${now}-${i}-${rand}` };
     }
-    const uid = await currentUid();
-    await mutate((s) => ({ ...s, transactions: txs.concat(s.transactions) }));
+    const uid = currentUid();
+    mutate((s) => ({ ...s, transactions: txs.concat(s.transactions) }));
     if (uid) {
-      ensureUserDoc(uid).then(() => {
+      try {
+        await ensureUserDoc(uid);
         for (const tx of txs) {
           const docRef = doc(db, "users", uid, "transactions", tx.id);
-          setDoc(docRef, { ...tx }).catch((err) => console.error("Firestore bulk tx error:", err));
+          await setDoc(docRef, { ...tx });
         }
-      });
+      } catch (err) {
+        console.error("Firestore bulk tx error:", err);
+      }
     }
     return txs;
   },
 
   async updateTransaction(id: string, patch: Partial<Omit<Transaction, "id">>): Promise<void> {
-    const uid = await currentUid();
-    await mutate((s) => ({
+    const uid = currentUid();
+    mutate((s) => ({
       ...s,
       transactions: s.transactions.map((t) => (t.id === id ? { ...t, ...patch } : t)),
     }));
     if (uid) {
-      const docRef = doc(db, "users", uid, "transactions", id);
-      updateDoc(docRef, patch as any).catch((err) => console.error("Firestore updateTx error:", err));
+      try {
+        const docRef = doc(db, "users", uid, "transactions", id);
+        await updateDoc(docRef, patch as any);
+      } catch (err) {
+        console.error("Firestore updateTx error:", err);
+      }
     }
   },
 
   async deleteTransaction(id: string): Promise<void> {
-    const uid = await currentUid();
-    await mutate((s) => ({ ...s, transactions: s.transactions.filter((t) => t.id !== id) }));
+    const uid = currentUid();
+    mutate((s) => ({ ...s, transactions: s.transactions.filter((t) => t.id !== id) }));
     if (uid) {
-      const docRef = doc(db, "users", uid, "transactions", id);
-      deleteDoc(docRef).catch((err) => console.error("Firestore deleteTx error:", err));
+      try {
+        const docRef = doc(db, "users", uid, "transactions", id);
+        await deleteDoc(docRef);
+      } catch (err) {
+        console.error("Firestore deleteTx error:", err);
+      }
     }
   },
 
   // --- accounts ---
   async listAccounts(): Promise<Account[]> {
-    const uid = await currentUid();
+    const uid = currentUid();
     const local = read(uid).accounts;
     if (uid) {
       try {
         const colRef = collection(db, "users", uid, "accounts");
-        const snap = await withTimeout(getDocs(colRef), 1200);
+        const snap = await withTimeout(getDocs(colRef));
         if (!snap.empty) {
           const remote: Account[] = snap.docs.map((docSnap) => {
             const data = docSnap.data();
@@ -255,7 +261,9 @@ export const api = {
             };
           });
           const remoteIds = new Set(remote.map((a) => a.id));
-          return [...remote, ...local.filter((a) => !remoteIds.has(a.id))];
+          const combined = [...remote, ...local.filter((a) => !remoteIds.has(a.id))];
+          write(uid, { ...read(uid), accounts: combined });
+          return combined;
         }
       } catch (err) {
         console.error("Firestore listAccounts error:", err);
@@ -266,46 +274,57 @@ export const api = {
 
   async createAccount(input: Omit<Account, "id">): Promise<Account> {
     const a: Account = { ...input, id: `a-${Date.now()}` };
-    const uid = await currentUid();
-    await mutate((s) => ({ ...s, accounts: [...s.accounts, a] }));
+    const uid = currentUid();
+    mutate((s) => ({ ...s, accounts: [...s.accounts, a] }));
     if (uid) {
-      ensureUserDoc(uid).then(() => {
+      try {
+        await ensureUserDoc(uid);
         const docRef = doc(db, "users", uid, "accounts", a.id);
-        setDoc(docRef, { ...a }).catch((err) => console.error("Firestore setDoc account error:", err));
-      });
+        await setDoc(docRef, { ...a });
+      } catch (err) {
+        console.error("Firestore setDoc account error:", err);
+      }
     }
     return a;
   },
 
   async updateAccount(id: string, patch: Partial<Omit<Account, "id">>): Promise<void> {
-    const uid = await currentUid();
-    await mutate((s) => ({
+    const uid = currentUid();
+    mutate((s) => ({
       ...s,
       accounts: s.accounts.map((a) => (a.id === id ? { ...a, ...patch } : a)),
     }));
     if (uid) {
-      const docRef = doc(db, "users", uid, "accounts", id);
-      updateDoc(docRef, patch as any).catch((err) => console.error("Firestore updateAccount error:", err));
+      try {
+        const docRef = doc(db, "users", uid, "accounts", id);
+        await updateDoc(docRef, patch as any);
+      } catch (err) {
+        console.error("Firestore updateAccount error:", err);
+      }
     }
   },
 
   async deleteAccount(id: string): Promise<void> {
-    const uid = await currentUid();
-    await mutate((s) => ({ ...s, accounts: s.accounts.filter((a) => a.id !== id) }));
+    const uid = currentUid();
+    mutate((s) => ({ ...s, accounts: s.accounts.filter((a) => a.id !== id) }));
     if (uid) {
-      const docRef = doc(db, "users", uid, "accounts", id);
-      deleteDoc(docRef).catch((err) => console.error("Firestore deleteAccount error:", err));
+      try {
+        const docRef = doc(db, "users", uid, "accounts", id);
+        await deleteDoc(docRef);
+      } catch (err) {
+        console.error("Firestore deleteAccount error:", err);
+      }
     }
   },
 
   // --- budgets ---
   async listBudgets(): Promise<Budget[]> {
-    const uid = await currentUid();
+    const uid = currentUid();
     const local = read(uid).budgets;
     if (uid) {
       try {
         const colRef = collection(db, "users", uid, "budgets");
-        const snap = await withTimeout(getDocs(colRef), 1200);
+        const snap = await withTimeout(getDocs(colRef));
         if (!snap.empty) {
           const remote: Budget[] = snap.docs.map((docSnap) => {
             const data = docSnap.data();
@@ -318,7 +337,9 @@ export const api = {
             };
           });
           const remoteIds = new Set(remote.map((b) => b.id));
-          return [...remote, ...local.filter((b) => !remoteIds.has(b.id))];
+          const combined = [...remote, ...local.filter((b) => !remoteIds.has(b.id))];
+          write(uid, { ...read(uid), budgets: combined });
+          return combined;
         }
       } catch (err) {
         console.error("Firestore listBudgets error:", err);
@@ -329,46 +350,57 @@ export const api = {
 
   async createBudget(input: Omit<Budget, "id">): Promise<Budget> {
     const b: Budget = { ...input, id: `b-${Date.now()}` };
-    const uid = await currentUid();
-    await mutate((s) => ({ ...s, budgets: [...s.budgets, b] }));
+    const uid = currentUid();
+    mutate((s) => ({ ...s, budgets: [...s.budgets, b] }));
     if (uid) {
-      ensureUserDoc(uid).then(() => {
+      try {
+        await ensureUserDoc(uid);
         const docRef = doc(db, "users", uid, "budgets", b.id);
-        setDoc(docRef, { ...b }).catch((err) => console.error("Firestore setDoc budget error:", err));
-      });
+        await setDoc(docRef, { ...b });
+      } catch (err) {
+        console.error("Firestore setDoc budget error:", err);
+      }
     }
     return b;
   },
 
   async updateBudget(id: string, patch: Partial<Omit<Budget, "id">>): Promise<void> {
-    const uid = await currentUid();
-    await mutate((s) => ({
+    const uid = currentUid();
+    mutate((s) => ({
       ...s,
       budgets: s.budgets.map((b) => (b.id === id ? { ...b, ...patch } : b)),
     }));
     if (uid) {
-      const docRef = doc(db, "users", uid, "budgets", b.id);
-      updateDoc(docRef, patch as any).catch((err) => console.error("Firestore updateBudget error:", err));
+      try {
+        const docRef = doc(db, "users", uid, "budgets", id);
+        await updateDoc(docRef, patch as any);
+      } catch (err) {
+        console.error("Firestore updateBudget error:", err);
+      }
     }
   },
 
   async deleteBudget(id: string): Promise<void> {
-    const uid = await currentUid();
-    await mutate((s) => ({ ...s, budgets: s.budgets.filter((b) => b.id !== id) }));
+    const uid = currentUid();
+    mutate((s) => ({ ...s, budgets: s.budgets.filter((b) => b.id !== id) }));
     if (uid) {
-      const docRef = doc(db, "users", uid, "budgets", id);
-      deleteDoc(docRef).catch((err) => console.error("Firestore deleteBudget error:", err));
+      try {
+        const docRef = doc(db, "users", uid, "budgets", id);
+        await deleteDoc(docRef);
+      } catch (err) {
+        console.error("Firestore deleteBudget error:", err);
+      }
     }
   },
 
   // --- reminders ---
   async listReminders(): Promise<Reminder[]> {
-    const uid = await currentUid();
+    const uid = currentUid();
     const local = read(uid).reminders;
     if (uid) {
       try {
         const colRef = collection(db, "users", uid, "reminders");
-        const snap = await withTimeout(getDocs(colRef), 1200);
+        const snap = await withTimeout(getDocs(colRef));
         if (!snap.empty) {
           const remote: Reminder[] = snap.docs.map((docSnap) => {
             const data = docSnap.data();
@@ -384,6 +416,7 @@ export const api = {
           });
           const remoteIds = new Set(remote.map((r) => r.id));
           const combined = [...remote, ...local.filter((r) => !remoteIds.has(r.id))];
+          write(uid, { ...read(uid), reminders: combined });
           return combined.sort((a, b) => +new Date(a.dueDate) - +new Date(b.dueDate));
         }
       } catch (err) {
@@ -395,23 +428,30 @@ export const api = {
 
   async createReminder(input: Omit<Reminder, "id">): Promise<Reminder> {
     const r: Reminder = { ...input, id: `r-${Date.now()}` };
-    const uid = await currentUid();
-    await mutate((s) => ({ ...s, reminders: [...s.reminders, r] }));
+    const uid = currentUid();
+    mutate((s) => ({ ...s, reminders: [...s.reminders, r] }));
     if (uid) {
-      ensureUserDoc(uid).then(() => {
+      try {
+        await ensureUserDoc(uid);
         const docRef = doc(db, "users", uid, "reminders", r.id);
-        setDoc(docRef, { ...r }).catch((err) => console.error("Firestore setDoc reminder error:", err));
-      });
+        await setDoc(docRef, { ...r });
+      } catch (err) {
+        console.error("Firestore setDoc reminder error:", err);
+      }
     }
     return r;
   },
 
   async deleteReminder(id: string): Promise<void> {
-    const uid = await currentUid();
-    await mutate((s) => ({ ...s, reminders: s.reminders.filter((r) => r.id !== id) }));
+    const uid = currentUid();
+    mutate((s) => ({ ...s, reminders: s.reminders.filter((r) => r.id !== id) }));
     if (uid) {
-      const docRef = doc(db, "users", uid, "reminders", id);
-      deleteDoc(docRef).catch((err) => console.error("Firestore deleteReminder error:", err));
+      try {
+        const docRef = doc(db, "users", uid, "reminders", id);
+        await deleteDoc(docRef);
+      } catch (err) {
+        console.error("Firestore deleteReminder error:", err);
+      }
     }
   },
 
