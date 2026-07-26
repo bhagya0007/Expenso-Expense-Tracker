@@ -117,6 +117,20 @@ function TransactionsPage() {
     onError: () => toast.error("Could not delete selected transactions"),
   });
 
+  const deleteAllMut = useMutation({
+    mutationFn: async () => {
+      const allIds = txs.map((t) => t.id);
+      await Promise.all(allIds.map((id) => api.deleteTransaction(id)));
+      return allIds.length;
+    },
+    onSuccess: (count) => {
+      setSelected(new Set());
+      qc.invalidateQueries({ queryKey: ["transactions"] });
+      toast.success(`Deleted all ${count} transactions`);
+    },
+    onError: () => toast.error("Could not delete transactions"),
+  });
+
   function toggleAllOnPage(checked: boolean) {
     const next = new Set(selected);
     for (const r of pageRows) checked ? next.add(r.id) : next.delete(r.id);
@@ -160,6 +174,20 @@ function TransactionsPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {txs.length > 0 && (
+            <Button
+              variant="outline"
+              className="rounded-xl border-destructive/30 text-destructive hover:bg-destructive/10"
+              disabled={deleteAllMut.isPending}
+              onClick={() => {
+                if (confirm(`Are you sure you want to delete ALL ${txs.length} transactions? This action cannot be undone.`)) {
+                  deleteAllMut.mutate();
+                }
+              }}
+            >
+              <Trash2 className="h-4 w-4" /> Delete all
+            </Button>
+          )}
           <Button variant="outline" onClick={exportCSV} className="rounded-xl">
             <Download className="h-4 w-4" /> Export
           </Button>
@@ -325,8 +353,15 @@ function TransactionsPage() {
                           {new Date(t.date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}
                         </td>
                         <td className="px-4 py-3">
-                          <div className="font-semibold">{t.merchant}</div>
-                          <div className="mt-0.5 text-xs text-muted-foreground">{t.category}</div>
+                          <div className="font-semibold">{t.merchant || t.category || "Transaction"}</div>
+                          <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                            <span>{t.category}</span>
+                            {t.notes && (
+                              <span className="inline-flex items-center rounded-md bg-muted/60 px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">
+                                {t.notes}
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="hidden px-4 py-3 md:table-cell">
                           <TypePill type={t.type} />
