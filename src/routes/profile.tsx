@@ -12,7 +12,9 @@ import {
 } from "@/components/ui/select";
 import { User as UserIcon, Bell, Wallet, Save } from "lucide-react";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
+import { updateProfile, updateEmail } from "firebase/auth";
+import { doc, getDoc, setDoc } from "firebase/firestore";
+import { auth, db } from "@/integrations/firebase/client";
 import { useAuth } from "@/hooks/use-auth";
 
 export const Route = createFileRoute("/profile")({
@@ -45,15 +47,62 @@ function ProfilePage() {
 
   useEffect(() => {
     if (!user) return;
+    const uid = user.uid || user.id;
     setEmail(user.email ?? "");
     (async () => {
-      const { data } = await supabase.from("profiles").select("*").eq("id", user.id).maybeSingle();
-      setRow((data as Row) ?? {
-        id: user.id, full_name: "", avatar_url: "", phone: "", currency: "INR",
-        monthly_income: 0, savings_goal_pct: 20, budget_period: "monthly",
-        notify_bills: true, notify_budgets: true, notify_weekly: false, notify_anomalies: true,
-      });
-      setLoading(false);
+      try {
+        const uRef = doc(db, "users", uid);
+        const snap = await getDoc(uRef);
+        if (snap.exists()) {
+          const data = snap.data();
+          setRow({
+            id: uid,
+            full_name: data.full_name || data.displayName || user.displayName || "",
+            avatar_url: data.avatar_url || "",
+            phone: data.phone || "",
+            currency: data.currency || "INR",
+            monthly_income: data.monthly_income ?? 0,
+            savings_goal_pct: data.savings_goal_pct ?? 20,
+            budget_period: data.budget_period || "monthly",
+            notify_bills: data.notify_bills ?? true,
+            notify_budgets: data.notify_budgets ?? true,
+            notify_weekly: data.notify_weekly ?? false,
+            notify_anomalies: data.notify_anomalies ?? true,
+          });
+        } else {
+          setRow({
+            id: uid,
+            full_name: user.displayName || "",
+            avatar_url: "",
+            phone: "",
+            currency: "INR",
+            monthly_income: 0,
+            savings_goal_pct: 20,
+            budget_period: "monthly",
+            notify_bills: true,
+            notify_budgets: true,
+            notify_weekly: false,
+            notify_anomalies: true,
+          });
+        }
+      } catch {
+        setRow({
+          id: uid,
+          full_name: user.displayName || "",
+          avatar_url: "",
+          phone: "",
+          currency: "INR",
+          monthly_income: 0,
+          savings_goal_pct: 20,
+          budget_period: "monthly",
+          notify_bills: true,
+          notify_budgets: true,
+          notify_weekly: false,
+          notify_anomalies: true,
+        });
+      } finally {
+        setLoading(false);
+      }
     })();
   }, [user]);
 
@@ -74,21 +123,26 @@ function ProfilePage() {
   const initials = (row.full_name || email || "U").split(" ").map(s => s[0]).slice(0, 2).join("").toUpperCase();
 
   function isValidPhone(p: string) {
+    if (!p) return true;
     const digits = p.replace(/\D/g, "");
     return digits.length >= 10 && digits.length <= 15;
   }
 
   async function save() {
     if (!user || !row) return;
-    if (!row.phone || !isValidPhone(row.phone)) {
+    if (row.phone && !isValidPhone(row.phone)) {
       toast.error("Please enter a valid mobile number (10–15 digits)");
       return;
     }
     setSaving(true);
+    const uid = user.uid || user.id;
     try {
-      const { error } = await supabase.from("profiles").upsert({
-        id: user.id,
+      const uRef = doc(db, "users", uid);
+      await setDoc(uRef, {
+        id: uid,
+        uid: uid,
         full_name: row.full_name,
+        displayName: row.full_name,
         avatar_url: row.avatar_url,
         phone: row.phone,
         currency: row.currency,
@@ -99,147 +153,110 @@ function ProfilePage() {
         notify_budgets: row.notify_budgets,
         notify_weekly: row.notify_weekly,
         notify_anomalies: row.notify_anomalies,
-      });
-      if (error) throw error;
-      if (email && email !== user.email) {
-        const { error: eErr } = await supabase.auth.updateUser({ email });
-        if (eErr) toast.warning("Profile saved. Email change needs verification: " + eErr.message);
-        else toast.success("Profile saved. Check your inbox to confirm the new email.");
-      } else {
-        toast.success("Profile saved");
+        updatedAt: new Date().toISOString(),
+      }, { merge: true });
+
+      if (auth.currentUser && row.full_name) {
+        try {
+          await updateProfile(auth.currentUser, { displayName: row.full_name });
+        } catch {}
       }
+
       await refreshProfile();
+      toast.success("Profile saved successfully");
       router.invalidate();
-    } catch (e) {
-      toast.error((e as Error).message);
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to save profile");
     } finally {
       setSaving(false);
     }
   }
 
-  const set = <K extends keyof Row>(k: K, v: Row[K]) => setRow({ ...row, [k]: v });
-
   return (
-    <div className="mx-auto max-w-4xl space-y-6 p-6">
+    <div className="mx-auto max-w-4xl space-y-6 p-4 md:p-8">
       <div>
-        <h1 className="font-display text-3xl font-bold tracking-tight">Your profile</h1>
-        <p className="text-sm text-muted-foreground">Personal details, contact and finance preferences.</p>
+        <h1 className="font-display text-2xl font-bold md:text-3xl">Your Profile</h1>
+        <p className="text-sm text-muted-foreground">Manage your personal details and financial defaults.</p>
       </div>
 
-      <Card className="glass p-6">
-        <div className="flex items-center gap-4">
-          <Avatar className="h-20 w-20 ring-2 ring-primary/30">
+      <Card className="p-6 space-y-6">
+        <div className="flex items-center gap-2 font-display text-lg font-semibold">
+          <UserIcon className="h-5 w-5 text-primary" /> Personal Details
+        </div>
+        <div className="flex flex-col sm:flex-row items-center gap-6">
+          <Avatar className="h-20 w-20 border-2 border-border">
             <AvatarImage src={row.avatar_url ?? undefined} />
-            <AvatarFallback className="gradient-primary text-lg text-primary-foreground">{initials}</AvatarFallback>
+            <AvatarFallback className="text-xl font-bold bg-primary/10 text-primary">{initials}</AvatarFallback>
           </Avatar>
-          <div className="flex-1">
-            <Label>Avatar URL</Label>
-            <Input placeholder="https://…" value={row.avatar_url ?? ""} onChange={(e) => set("avatar_url", e.target.value)} />
-            <p className="mt-1 text-xs text-muted-foreground">Paste an image URL. Uploads coming soon.</p>
+          <div className="space-y-1 text-center sm:text-left">
+            <div className="font-semibold text-lg">{row.full_name || "Expenso User"}</div>
+            <div className="text-sm text-muted-foreground">{email}</div>
           </div>
         </div>
-
-        <Separator className="my-6" />
-
-        <div className="grid gap-4 md:grid-cols-2">
-          <Field label="Full name" icon={UserIcon}>
-            <Input value={row.full_name ?? ""} onChange={(e) => set("full_name", e.target.value)} placeholder="Your name" />
-          </Field>
-          <Field label="Email">
-            <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
-          </Field>
-          <Field label="Mobile number *">
-            <Input type="tel" inputMode="tel" placeholder="+91 98765 43210" required
-              value={row.phone ?? ""} onChange={(e) => set("phone", e.target.value)} />
-            <p className="text-[11px] text-muted-foreground">Required · used for security alerts and reminders.</p>
-          </Field>
-          <Field label="Currency">
-            <Select value={row.currency} onValueChange={(v) => set("currency", v)}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="INR">₹ Indian Rupee</SelectItem>
-                <SelectItem value="USD">$ US Dollar</SelectItem>
-                <SelectItem value="EUR">€ Euro</SelectItem>
-                <SelectItem value="GBP">£ British Pound</SelectItem>
-                <SelectItem value="AED">د.إ UAE Dirham</SelectItem>
-              </SelectContent>
-            </Select>
-          </Field>
+        <Separator />
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-2">
+            <Label htmlFor="fn">Full Name</Label>
+            <Input id="fn" value={row.full_name ?? ""} onChange={(e) => setRow({ ...row, full_name: e.target.value })} placeholder="Your full name" />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="ph">Phone Number</Label>
+            <Input id="ph" value={row.phone ?? ""} onChange={(e) => setRow({ ...row, phone: e.target.value })} placeholder="+91 98765 43210" />
+          </div>
         </div>
       </Card>
 
-      <Card className="glass p-6">
-        <div className="mb-4 flex items-center gap-3">
-          <div className="grid h-10 w-10 place-items-center rounded-xl bg-primary/15 text-primary"><Wallet className="h-5 w-5" /></div>
-          <div>
-            <div className="font-semibold">Finance preferences</div>
-            <div className="text-xs text-muted-foreground">Powers budgets, forecasts and savings tips.</div>
-          </div>
+      <Card className="p-6 space-y-6">
+        <div className="flex items-center gap-2 font-display text-lg font-semibold">
+          <Wallet className="h-5 w-5 text-primary" /> Finance Defaults
         </div>
-        <div className="grid gap-4 md:grid-cols-3">
-          <Field label="Monthly income">
-            <Input type="number" min={0} inputMode="numeric" placeholder="0"
-              value={row.monthly_income ? String(row.monthly_income) : ""}
-              onChange={(e) => set("monthly_income", e.target.value === "" ? null : Number(e.target.value))} />
-          </Field>
-          <Field label="Savings goal (%)">
-            <Input type="number" min={0} max={90} inputMode="numeric" placeholder="20"
-              value={row.savings_goal_pct ? String(row.savings_goal_pct) : ""}
-              onChange={(e) => set("savings_goal_pct", e.target.value === "" ? null : Number(e.target.value))} />
-          </Field>
-          <Field label="Budget period">
-            <Select value={row.budget_period ?? "monthly"} onValueChange={(v) => set("budget_period", v)}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-2">
+            <Label htmlFor="curr">Preferred Currency</Label>
+            <Select value={row.currency} onValueChange={(v) => setRow({ ...row, currency: v })}>
+              <SelectTrigger id="curr"><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="weekly">Weekly</SelectItem>
-                <SelectItem value="monthly">Monthly</SelectItem>
-                <SelectItem value="yearly">Yearly</SelectItem>
+                <SelectItem value="INR">₹ INR (Indian Rupee)</SelectItem>
+                <SelectItem value="USD">$ USD (US Dollar)</SelectItem>
+                <SelectItem value="EUR">€ EUR (Euro)</SelectItem>
+                <SelectItem value="GBP">£ GBP (British Pound)</SelectItem>
               </SelectContent>
             </Select>
-          </Field>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="inc">Expected Monthly Income (₹)</Label>
+            <Input id="inc" type="number" value={row.monthly_income ?? ""} onChange={(e) => setRow({ ...row, monthly_income: Number(e.target.value) })} placeholder="50000" />
+          </div>
         </div>
       </Card>
 
-      <Card className="glass p-6">
-        <div className="mb-2 flex items-center gap-3">
-          <div className="grid h-10 w-10 place-items-center rounded-xl bg-primary/15 text-primary"><Bell className="h-5 w-5" /></div>
-          <div>
-            <div className="font-semibold">Notifications</div>
-            <div className="text-xs text-muted-foreground">Choose what Expenso pings you about.</div>
-          </div>
+      <Card className="p-6 space-y-4">
+        <div className="flex items-center gap-2 font-display text-lg font-semibold">
+          <Bell className="h-5 w-5 text-primary" /> Notifications
         </div>
-        <Toggle label="Bill reminders" v={row.notify_bills} onChange={(v) => set("notify_bills", v)} />
-        <Separator className="my-3" />
-        <Toggle label="Budget alerts" v={row.notify_budgets} onChange={(v) => set("notify_budgets", v)} />
-        <Separator className="my-3" />
-        <Toggle label="Weekly digest" v={row.notify_weekly} onChange={(v) => set("notify_weekly", v)} />
-        <Separator className="my-3" />
-        <Toggle label="Anomaly detection" v={row.notify_anomalies} onChange={(v) => set("notify_anomalies", v)} />
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="text-sm font-medium">Bill Reminders</div>
+            <div className="text-xs text-muted-foreground">Alerts for upcoming recurring payments</div>
+          </div>
+          <Switch checked={row.notify_bills} onCheckedChange={(v) => setRow({ ...row, notify_bills: v })} />
+        </div>
+        <Separator />
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="text-sm font-medium">Budget Alerts</div>
+            <div className="text-xs text-muted-foreground">Alerts when spending approaches limit</div>
+          </div>
+          <Switch checked={row.notify_budgets} onCheckedChange={(v) => setRow({ ...row, notify_budgets: v })} />
+        </div>
       </Card>
 
       <div className="flex justify-end">
-        <Button onClick={save} disabled={saving} className="gradient-primary shadow-glow">
-          <Save className="mr-2 h-4 w-4" />{saving ? "Saving…" : "Save changes"}
+        <Button onClick={save} disabled={saving} size="lg" className="gap-2">
+          <Save className="h-4 w-4" />
+          {saving ? "Saving…" : "Save Profile"}
         </Button>
       </div>
-    </div>
-  );
-}
-
-function Field({ label, icon: Icon, children }: { label: string; icon?: React.ComponentType<{ className?: string }>; children: React.ReactNode }) {
-  return (
-    <div className="grid gap-2">
-      <Label className="flex items-center gap-2">{Icon && <Icon className="h-3.5 w-3.5 text-muted-foreground" />}{label}</Label>
-      {children}
-    </div>
-  );
-}
-
-function Toggle({ label, v, onChange }: { label: string; v: boolean; onChange: (v: boolean) => void }) {
-  return (
-    <div className="flex items-center justify-between">
-      <span className="text-sm">{label}</span>
-      <Switch checked={v} onCheckedChange={onChange} />
     </div>
   );
 }
