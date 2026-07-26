@@ -9,7 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Progress } from "@/components/ui/progress";
 import { Upload, FileText, CheckCircle2, X, Building2, Plus, TrendingUp, TrendingDown, ListChecks } from "lucide-react";
 import { toast } from "sonner";
-import { parseBankStatement, type ParseResult, type ParsedTxn } from "@/lib/bank-parser";
+import { parseBankStatement, cleanDescriptionAndRef, type ParseResult, type ParsedTxn } from "@/lib/bank-parser";
 import { api } from "@/lib/api";
 import type { Category, PaymentMethod, Transaction } from "@/lib/types";
 import { inr } from "@/lib/format";
@@ -335,13 +335,14 @@ function TransactionsTable({ rows }: { rows: ParsedTxn[] }) {
         const isCredit = (r.credit ?? 0) > 0;
         const amount = isCredit ? r.credit! : r.debit!;
         if (!amount || amount <= 0) return null;
+        const { cleanMerchant, reference } = cleanDescriptionAndRef(r.description, r.reference);
         return {
           type: isCredit ? ("income" as const) : ("expense" as const),
           amount,
-          category: isCredit ? "Salary" : inferCategory(r.description),
-          merchant: r.description.slice(0, 80) || "Bank txn",
+          category: isCredit ? "Salary" : inferCategory(cleanMerchant),
+          merchant: cleanMerchant,
           date: r.date ?? new Date().toISOString(),
-          notes: r.reference ? `Ref: ${r.reference}` : undefined,
+          notes: reference ? `Ref: ${reference}` : undefined,
           paymentMethod: "Bank" as PaymentMethod,
           accountId,
         };

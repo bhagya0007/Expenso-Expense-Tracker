@@ -302,6 +302,56 @@ function buildCandidateRows(lines: string[]): string[] {
   return candidates;
 }
 
+export function cleanDescriptionAndRef(rawDesc: string, rawRef?: string | null): { cleanMerchant: string; reference: string | null } {
+  let text = (rawDesc || "").trim();
+  let ref = rawRef ? rawRef.trim() : null;
+
+  // 1. Extract reference if not explicitly supplied
+  if (!ref) {
+    const txnMatch = text.match(/\b(TXN\d{5,15})\b/i) ||
+                     text.match(/\b([0-9]{10,14})\b/) ||
+                     text.match(/\b(UPI[/-]?[A-Z0-9]{8,18})\b/i);
+    if (txnMatch) {
+      ref = txnMatch[1];
+    }
+  }
+
+  // 2. Strip reference string from merchant name if present
+  if (ref) {
+    const escaped = ref.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    text = text.replace(new RegExp(`\\b${escaped}\\b`, "gi"), "");
+  }
+
+  // 3. Strip inline dates (e.g. 16/09/2025 or 16-Sep-2025)
+  text = text.replace(/\b\d{1,2}[-/. ](?:\d{1,2}|[A-Za-z]{3})[-/. ]\d{2,4}\b/g, "");
+
+  // 4. Transform raw UPI / Bank strings into clean merchant names
+  if (/^UPI[-/]/i.test(text)) {
+    const parts = text.split(/[-/]/).map((p) => p.trim()).filter(Boolean);
+    if (parts.length >= 2) {
+      const namePart = parts[1];
+      const cleanName = namePart
+        .replace(/@.*$/, "")
+        .replace(/\d{6,}$/, "")
+        .replace(/PAYTMQR\w*/i, "")
+        .trim();
+      if (cleanName.length >= 2) {
+        text = `UPI - ${cleanName}`;
+      }
+    }
+  } else if (/^ACH\s+[D|C]?[-/]?/i.test(text)) {
+    text = text.replace(/^ACH\s+[D|C]?[-/]?/i, "ACH - ").replace(/-\d+$/, "").trim();
+  }
+
+  text = text.replace(/^[-_\s]+|[-_\s]+$/g, "").replace(/\s+/g, " ");
+
+  if (!text || text.length < 2) {
+    text = rawDesc.split(/\s+/)[0] || "Bank Transaction";
+  }
+
+  return { cleanMerchant: text, reference: ref };
+}
+
 function parseRow(line: string, defaultYear: number): ParsedTxn | null {
   // Strip leading serial number (e.g. "1 ", "26 ") if present
   const cleanedLine = line.replace(/^\d{1,4}\s+(?=\d{1,2}[-/. ])/, "").trim();
@@ -369,11 +419,13 @@ function parseRow(line: string, defaultYear: number): ParsedTxn | null {
   }
 
   // Strip trailing account identifiers from description
-  let description = descText.replace(/\b(Cash Book|CashBook|Account|Bank)\b/gi, "").trim();
-  if (!description) description = "(no description)";
+  let rawDescription = descText.replace(/\b(Cash Book|CashBook|Account|Bank)\b/gi, "").trim();
+  if (!rawDescription) rawDescription = "(no description)";
 
-  const refMatch = description.match(/\b([A-Z0-9]{8,})\b/) || description.match(/\b(\d{9,})\b/);
-  const reference = refMatch ? refMatch[1] : null;
+  const rawRefMatch = rawDescription.match(/\b([A-Z0-9]{8,})\b/) || rawDescription.match(/\b(\d{9,})\b/);
+  const initialRef = rawRefMatch ? rawRefMatch[1] : null;
+
+  const { cleanMerchant: description, reference } = cleanDescriptionAndRef(rawDescription, initialRef);
 
   let debit: number | null = null;
   let credit: number | null = null;
