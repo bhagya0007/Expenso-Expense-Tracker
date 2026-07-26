@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider, useQueryClient, useQuery } from "@tanstack/react-query";
 import {
-  Outlet, Link, createRootRouteWithContext, useRouter, useRouterState, useNavigate,
+  Outlet, Link, createRootRouteWithContext, useRouter, useRouterState, useNavigate, Navigate,
   HeadContent, Scripts,
 } from "@tanstack/react-router";
 import { useEffect, type ReactNode } from "react";
@@ -251,7 +251,7 @@ function Gate() {
     );
   }
   if (isAuthRoute) return <Outlet />;
-  if (!session) return null;
+  if (!session) return <Navigate to="/auth" replace />;
   return <AppShell />;
 }
 
