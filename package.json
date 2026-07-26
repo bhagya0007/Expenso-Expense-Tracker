@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite dev",
-    "build": "vite build && node -e \"const fs=require('fs'); const files=fs.readdirSync('dist/client/assets'); const js=files.find(f=>f.startsWith('client-')&&f.endsWith('.js')); const css=files.find(f=>f.startsWith('styles-')&&f.endsWith('.css')); const html='<!DOCTYPE html><html lang=\\\"en\\\"><head><meta charset=\\\"UTF-8\\\"/><meta name=\\\"viewport\\\" content=\\\"width=device-width, initial-scale=1.0\\\"/><title>Expenso — Smart Expense Tracker & Money Companion</title><link rel=\\\"stylesheet\\\" href=\\\"/assets/'+css+'\\\"/></head><body><div id=\\\"root\\\"></div><script type=\\\"module\\\" src=\\\"/assets/'+js+'\\\"></script></body></html>'; fs.writeFileSync('dist/client/index.html', html);\"",
+    "build": "vite build",
+    "build:static": "vite build --config vite.config.static.ts",
     "build:dev": "vite build --mode development",
     "preview": "vite preview",
     "lint": "eslint .",
