@@ -124,6 +124,19 @@ import { auth } from "@/integrations/firebase/client";
 
 const GMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@gmail\.com$/i;
 
+const attemptLog: number[] = [];
+function checkRateLimit(maxAttempts = 5, windowMs = 60_000): boolean {
+  const now = Date.now();
+  while (attemptLog.length > 0 && attemptLog[0] < now - windowMs) {
+    attemptLog.shift();
+  }
+  if (attemptLog.length >= maxAttempts) {
+    return false;
+  }
+  attemptLog.push(now);
+  return true;
+}
+
 function SignInForm({ onForgot, onUnverified }: { onForgot: () => void; onUnverified: (email: string) => void }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -132,6 +145,10 @@ function SignInForm({ onForgot, onUnverified }: { onForgot: () => void; onUnveri
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!checkRateLimit(5, 60_000)) {
+      toast.error("Too many attempts. Please wait a minute before trying again.");
+      return;
+    }
     if (!GMAIL_REGEX.test(email.trim())) {
       toast.error("Please enter a valid Gmail address ending with @gmail.com");
       return;
