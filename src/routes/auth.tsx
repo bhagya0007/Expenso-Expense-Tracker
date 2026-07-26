@@ -129,7 +129,6 @@ function SignInForm({ onForgot, onUnverified }: { onForgot: () => void; onUnveri
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const navigate = useNavigate();
-  const { signInWithMock } = useAuth();
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -194,7 +193,6 @@ function SignUpForm({ onVerify }: { onVerify: (email: string) => void }) {
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const navigate = useNavigate();
-  const { signInWithMock } = useAuth();
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
