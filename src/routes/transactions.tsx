@@ -327,6 +327,7 @@ function TransactionsPage() {
                     <th className="px-4 py-3">Name</th>
                     <th className="hidden px-4 py-3 md:table-cell">Type</th>
                     <th className="hidden px-4 py-3 md:table-cell">Payment</th>
+                    <th className="hidden px-4 py-3 sm:table-cell">Ref / Txn No.</th>
                     <th className="px-4 py-3 text-right">Amount</th>
                     <th className="hidden px-4 py-3 lg:table-cell">Account</th>
                     <th className="px-4 py-3" />
@@ -354,19 +355,21 @@ function TransactionsPage() {
                         </td>
                         <td className="px-4 py-3">
                           <div className="font-semibold">{t.merchant || t.category || "Transaction"}</div>
-                          <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-                            <span>{t.category}</span>
-                            {t.notes && (
-                              <span className="inline-flex items-center rounded-md bg-muted/60 px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">
-                                {t.notes}
-                              </span>
-                            )}
-                          </div>
+                          <div className="mt-0.5 text-xs text-muted-foreground">{t.category}</div>
                         </td>
                         <td className="hidden px-4 py-3 md:table-cell">
                           <TypePill type={t.type} />
                         </td>
                         <td className="hidden px-4 py-3 text-muted-foreground md:table-cell">{t.paymentMethod}</td>
+                        <td className="hidden px-4 py-3 font-mono text-xs text-muted-foreground sm:table-cell">
+                          {t.notes ? (
+                            <span className="inline-flex items-center rounded-md bg-muted/60 px-2 py-0.5 font-medium text-foreground/90">
+                              {t.notes}
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground/30">—</span>
+                          )}
+                        </td>
                         <td className={`whitespace-nowrap px-4 py-3 text-right font-semibold tabular-nums ${t.type === "income" ? "text-success" : ""}`}>
                           {t.type === "income" ? "+" : "−"}{inr(t.amount)}
                         </td>
@@ -464,6 +467,7 @@ function AddTransactionDialog({ accounts, onClose }: { accounts: { id: string; n
   const [type, setType] = useState<TransactionType>("expense");
   const [amount, setAmount] = useState("");
   const [merchant, setMerchant] = useState("");
+  const [notes, setNotes] = useState("");
   const [category, setCategory] = useState<Category>("Food & Dining");
   const [customCategory, setCustomCategory] = useState("");
   const [method, setMethod] = useState<PaymentMethod>("UPI");
@@ -484,6 +488,7 @@ function AddTransactionDialog({ accounts, onClose }: { accounts: { id: string; n
         type, amount: Number(amount),
         merchant: merchant.trim() || finalCategory,
         category: finalCategory,
+        notes: notes.trim() || undefined,
         paymentMethod: method,
         accountId: accountId === "__none__" ? "" : accountId,
         date: new Date(dateTime).toISOString(),
@@ -492,7 +497,7 @@ function AddTransactionDialog({ accounts, onClose }: { accounts: { id: string; n
       qc.invalidateQueries({ queryKey: ["transactions"] });
       toast.success("Transaction added");
       onClose();
-      setAmount(""); setMerchant(""); setCustomCategory("");
+      setAmount(""); setMerchant(""); setNotes(""); setCustomCategory("");
     },
   });
 
@@ -516,8 +521,12 @@ function AddTransactionDialog({ accounts, onClose }: { accounts: { id: string; n
           <Input type="datetime-local" value={dateTime} onChange={(e) => setDateTime(e.target.value)} />
         </div>
         <div className="grid gap-2">
-          <Label>Merchant</Label>
+          <Label>Merchant Name</Label>
           <Input placeholder="e.g. Swiggy" value={merchant} onChange={(e) => setMerchant(e.target.value)} />
+        </div>
+        <div className="grid gap-2">
+          <Label>Reference / Txn No. (optional)</Label>
+          <Input placeholder="e.g. TXN100098 or UPI/123456" value={notes} onChange={(e) => setNotes(e.target.value)} />
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div className="grid gap-2">
@@ -588,6 +597,7 @@ function EditTransactionDialog({
   const [type, setType] = useState<TransactionType>(transaction.type);
   const [amount, setAmount] = useState(String(transaction.amount));
   const [merchant, setMerchant] = useState(transaction.merchant);
+  const [notes, setNotes] = useState(transaction.notes || "");
   const knownCategory = (CATEGORIES as readonly string[]).includes(transaction.category);
   const [category, setCategory] = useState<Category>(
     (knownCategory ? transaction.category : "Other") as Category,
@@ -614,6 +624,7 @@ function EditTransactionDialog({
         amount: Number(amount),
         merchant: merchant.trim() || finalCategory,
         category: finalCategory,
+        notes: notes.trim() || undefined,
         paymentMethod: method,
         accountId: accountId === "__none__" ? "" : accountId,
         date: new Date(date).toISOString(),
@@ -642,8 +653,12 @@ function EditTransactionDialog({
           <Input type="number" placeholder="0" value={amount} onChange={(e) => setAmount(e.target.value)} />
         </div>
         <div className="grid gap-2">
-          <Label>Merchant</Label>
+          <Label>Merchant Name</Label>
           <Input placeholder="e.g. Swiggy" value={merchant} onChange={(e) => setMerchant(e.target.value)} />
+        </div>
+        <div className="grid gap-2">
+          <Label>Reference / Txn No.</Label>
+          <Input placeholder="e.g. TXN100098 or UPI/123456" value={notes} onChange={(e) => setNotes(e.target.value)} />
         </div>
         <div className="grid gap-2">
           <Label>Date & time</Label>
