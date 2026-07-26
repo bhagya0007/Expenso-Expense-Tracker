@@ -481,7 +481,9 @@ function AddTransactionDialog({ accounts, onClose }: { accounts: { id: string; n
   const create = useMutation({
     mutationFn: () =>
       api.createTransaction({
-        type, amount: Number(amount), merchant, category: finalCategory,
+        type, amount: Number(amount),
+        merchant: merchant.trim() || finalCategory,
+        category: finalCategory,
         paymentMethod: method,
         accountId: accountId === "__none__" ? "" : accountId,
         date: new Date(dateTime).toISOString(),
@@ -610,7 +612,7 @@ function EditTransactionDialog({
       api.updateTransaction(transaction.id, {
         type,
         amount: Number(amount),
-        merchant,
+        merchant: merchant.trim() || finalCategory,
         category: finalCategory,
         paymentMethod: method,
         accountId: accountId === "__none__" ? "" : accountId,
