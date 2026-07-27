@@ -10,9 +10,9 @@ import * as pdfjsLib from "pdfjs-dist";
 import pdfWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 
 if (typeof window !== "undefined") {
+  const localWorker = typeof pdfWorker === "string" && pdfWorker ? pdfWorker : null;
   pdfjsLib.GlobalWorkerOptions.workerSrc =
-    (pdfWorker as string) ||
-    "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.worker.min.mjs";
+    localWorker || "https://cdn.jsdelivr.net/npm/pdfjs-dist@6.1.200/build/pdf.worker.min.mjs";
 }
 
 export interface ParsedTxn {
