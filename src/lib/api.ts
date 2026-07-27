@@ -15,7 +15,17 @@ const EMPTY = (): Store => ({ transactions: [], accounts: [], budgets: [], remin
 
 const guestStore: Store = EMPTY();
 
-const storeKey = (uid: string) => `expenso:data:${uid}`;
+const storeKey = (uid: string | null) => `expenso:data:${uid || "guest"}`;
+
+function cleanObjectForFirestore<T extends Record<string, any>>(obj: T): T {
+  const clean: Record<string, any> = {};
+  for (const [key, val] of Object.entries(obj)) {
+    if (val !== undefined) {
+      clean[key] = val;
+    }
+  }
+  return clean as T;
+}
 
 function withTimeout<T>(promise: Promise<T>, ms = 8000): Promise<T> {
   return Promise.race([
@@ -30,7 +40,6 @@ function currentUid(): string | null {
 }
 
 function read(uid: string | null): Store {
-  if (!uid) return guestStore;
   if (typeof window === "undefined") return EMPTY();
   const raw = localStorage.getItem(storeKey(uid));
   if (!raw) return EMPTY();
@@ -43,10 +52,6 @@ function read(uid: string | null): Store {
 }
 
 function write(uid: string | null, s: Store) {
-  if (!uid) {
-    Object.assign(guestStore, s);
-    return;
-  }
   if (typeof window === "undefined") return;
   localStorage.setItem(storeKey(uid), JSON.stringify(s));
 }
@@ -63,7 +68,7 @@ async function ensureUserDoc(uid: string) {
     const uRef = doc(db, "users", uid);
     const email = auth.currentUser?.email || "";
     const name = auth.currentUser?.displayName || email.split("@")[0] || "User";
-    await setDoc(uRef, { uid, email, displayName: name, updatedAt: new Date().toISOString() }, { merge: true });
+    await setDoc(uRef, cleanObjectForFirestore({ uid, email, displayName: name, updatedAt: new Date().toISOString() }), { merge: true });
   } catch (err) {
     console.error("Firestore ensureUserDoc error:", err);
   }
@@ -157,7 +162,7 @@ async function syncAccountsToFirestore(uid: string | null) {
   for (const acc of computed) {
     try {
       const docRef = doc(db, "users", uid, "accounts", acc.id);
-      await setDoc(docRef, { ...acc }, { merge: true });
+      await setDoc(docRef, cleanObjectForFirestore({ ...acc }), { merge: true });
     } catch (err) {
       console.error("Firestore sync account balance error:", err);
     }
@@ -220,7 +225,7 @@ export const api = {
       try {
         await ensureUserDoc(uid);
         const docRef = doc(db, "users", uid, "transactions", tx.id);
-        await setDoc(docRef, { ...tx });
+        await setDoc(docRef, cleanObjectForFirestore({ ...tx }));
         await syncAccountsToFirestore(uid);
       } catch (err) {
         console.error("Firestore setDoc tx error:", err);
@@ -251,7 +256,7 @@ export const api = {
         await ensureUserDoc(uid);
         for (const tx of txs) {
           const docRef = doc(db, "users", uid, "transactions", tx.id);
-          await setDoc(docRef, { ...tx });
+          await setDoc(docRef, cleanObjectForFirestore({ ...tx }));
         }
         await syncAccountsToFirestore(uid);
       } catch (err) {
@@ -273,7 +278,7 @@ export const api = {
     if (uid) {
       try {
         const docRef = doc(db, "users", uid, "transactions", id);
-        await updateDoc(docRef, patch as any);
+        await updateDoc(docRef, cleanObjectForFirestore(patch as any));
         await syncAccountsToFirestore(uid);
       } catch (err) {
         console.error("Firestore updateTx error:", err);
@@ -366,7 +371,7 @@ export const api = {
       try {
         await ensureUserDoc(uid);
         const docRef = doc(db, "users", uid, "accounts", a.id);
-        await setDoc(docRef, { ...computedAccount });
+        await setDoc(docRef, cleanObjectForFirestore({ ...computedAccount }));
       } catch (err) {
         console.error("Firestore setDoc account error:", err);
       }
