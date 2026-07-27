@@ -128,6 +128,43 @@ function Dashboard() {
     ? "Add data"
     : healthScore >= 80 ? "Excellent" : healthScore >= 60 ? "Good" : healthScore >= 40 ? "Fair" : "Needs work";
 
+  const prevMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const prevMonth = txs.filter((t) =>
+    new Date(t.date).getMonth() === prevMonthDate.getMonth() &&
+    new Date(t.date).getFullYear() === prevMonthDate.getFullYear()
+  );
+  const prevIncome = prevMonth.filter((t) => t.type === "income").reduce((s, t) => s + t.amount, 0);
+  const prevExpenses = prevMonth.filter((t) => t.type === "expense").reduce((s, t) => s + t.amount, 0);
+
+  let incomeTrend = "";
+  if (income > 0 && prevIncome > 0) {
+    const diff = Math.round(((income - prevIncome) / prevIncome) * 100);
+    incomeTrend = `${diff >= 0 ? "+" : ""}${diff}%`;
+  } else if (income > 0) {
+    incomeTrend = "Active";
+  }
+
+  let expenseTrend = "";
+  if (expenses > 0 && prevExpenses > 0) {
+    const diff = Math.round(((expenses - prevExpenses) / prevExpenses) * 100);
+    expenseTrend = `${diff >= 0 ? "+" : ""}${diff}%`;
+  } else if (expenses > 0) {
+    expenseTrend = "Active";
+  }
+
+  let balanceTrendBadge: { text: string; positive: boolean } | null = null;
+  if (prevIncome > 0 || prevExpenses > 0) {
+    const prevNet = prevIncome - prevExpenses;
+    const currentNet = income - expenses;
+    if (prevNet !== 0) {
+      const diff = Math.round(((currentNet - prevNet) / Math.abs(prevNet)) * 100);
+      balanceTrendBadge = {
+        text: `${diff >= 0 ? "+" : ""}${diff}%`,
+        positive: diff >= 0,
+      };
+    }
+  }
+
   return (
     <div className="space-y-6 p-4 md:p-6">
       {/* Hero balance card */}
@@ -142,12 +179,19 @@ function Dashboard() {
             <div className="mt-2 font-numeric text-4xl font-semibold tracking-tight md:text-5xl">
               {inr(balance)}
             </div>
-            <div className="mt-2 flex items-center gap-2 text-sm">
-              <Badge className="bg-success/15 text-success hover:bg-success/20">
-                <ArrowUpRight className="h-3 w-3" /> +12.4%
-              </Badge>
-              <span className="text-muted-foreground">vs last month</span>
-            </div>
+            {balanceTrendBadge ? (
+              <div className="mt-2 flex items-center gap-2 text-sm">
+                <Badge className={balanceTrendBadge.positive ? "bg-success/15 text-success hover:bg-success/20" : "bg-destructive/15 text-destructive hover:bg-destructive/20"}>
+                  {balanceTrendBadge.positive ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownRight className="h-3 w-3" />}
+                  {balanceTrendBadge.text}
+                </Badge>
+                <span className="text-muted-foreground">vs last month</span>
+              </div>
+            ) : (
+              <div className="mt-2 text-xs text-muted-foreground">
+                {accounts.length > 0 ? "Live balance across linked accounts" : "No transaction activity recorded yet"}
+              </div>
+            )}
           </div>
           <div className="flex flex-wrap gap-3">
             {accounts.slice(0, 3).map((a) => (
@@ -165,9 +209,9 @@ function Dashboard() {
 
       {/* Stat cards */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="Monthly Income" value={inr(income)} icon={<ArrowDownRight className="h-4 w-4" />} tone="success" trend="+8.2%" />
-        <StatCard label="Monthly Expenses" value={inr(expenses)} icon={<ArrowUpRight className="h-4 w-4" />} tone="danger" trend="+3.1%" />
-        <StatCard label="Total Savings" value={inr(savings)} icon={<PiggyBank className="h-4 w-4" />} tone="primary" trend={`${savingsRate}% rate`} />
+        <StatCard label="Monthly Income" value={inr(income)} icon={<ArrowDownRight className="h-4 w-4" />} tone="success" trend={incomeTrend} />
+        <StatCard label="Monthly Expenses" value={inr(expenses)} icon={<ArrowUpRight className="h-4 w-4" />} tone="danger" trend={expenseTrend} />
+        <StatCard label="Total Savings" value={inr(savings)} icon={<PiggyBank className="h-4 w-4" />} tone="primary" trend={income > 0 ? `${savingsRate}% rate` : ""} />
         <StatCard label="Health Score" value={healthScore === null ? "—" : `${healthScore}/100`} icon={<ShieldCheck className="h-4 w-4" />} tone="accent" trend={healthLabel} />
       </div>
 
