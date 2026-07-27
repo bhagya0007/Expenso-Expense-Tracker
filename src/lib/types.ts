@@ -38,6 +38,7 @@ export interface Account {
   name: string;
   type: AccountType;
   balance: number;
+  initialBalance?: number;
   mask?: string;
 }
 
