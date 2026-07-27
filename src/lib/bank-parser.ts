@@ -46,6 +46,8 @@ export interface ParseResult {
   extractionWarning?: string;
 }
 
+export type ExtractionResult = { lines: string[]; pages: number; totalPages: number; skippedPages: number; warnings: string[] };
+
 // Matches: 12/03/2024, 12-03-24, 12 Mar 2024, 12-Mar-2024, 2024-03-12, 01-Jul, 01 Jul, 01-May-2026
 const DATE_RE = new RegExp(
   "\\b(" +
@@ -189,7 +191,7 @@ function yieldToBrowser() {
 
 export async function extractLines(
   file: File,
-): Promise<{ lines: string[]; pages: number; totalPages: number; skippedPages: number; warnings: string[] }> {
+): Promise<ExtractionResult> {
   const buf = await file.arrayBuffer();
 
   let doc: Awaited<ReturnType<typeof pdfjsLib.getDocument["prototype"]["promise"]>>;
@@ -308,6 +310,79 @@ export async function extractLines(
     return { lines, pages: pageCount, totalPages: doc.numPages, skippedPages, warnings };
   } finally {
     try { await (doc as any)?.destroy?.(); } catch { /* ignore */ }
+  }
+}
+
+export async function ocrExtractLines(
+  file: File,
+  onProgress?: (status: string, percent: number) => void,
+): Promise<ExtractionResult> {
+  onProgress?.("Loading OCR engine…", 5);
+  const { createWorker } = await import('tesseract.js');
+  
+  const worker = await createWorker('eng');
+  
+  try {
+    onProgress?.("Opening PDF for OCR…", 10);
+    const buf = await file.arrayBuffer();
+    const loadingTask = pdfjsLib.getDocument({
+      data: buf,
+      disableFontFace: true,
+      useSystemFonts: false,
+    });
+    const doc = await loadingTask.promise;
+    const pageCount = Math.min(doc.numPages, MAX_PAGES);
+    const allLines: string[] = [];
+    const warnings: string[] = ["Text was extracted using OCR — some values may need manual verification."];
+    
+    for (let p = 1; p <= pageCount; p++) {
+      const pctBase = 10 + ((p - 1) / pageCount) * 80;
+      onProgress?.(`OCR: Rendering page ${p}/${pageCount}…`, pctBase);
+      
+      const page = await doc.getPage(p);
+      const viewport = page.getViewport({ scale: 2.0 });
+      
+      const canvas = document.createElement('canvas');
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      const ctx = canvas.getContext('2d')!;
+      
+      await page.render({ canvasContext: ctx, viewport }).promise;
+      
+      const dataUrl = canvas.toDataURL('image/png');
+      
+      onProgress?.(`OCR: Reading page ${p}/${pageCount}…`, pctBase + (40 / pageCount));
+      
+      const { data: { text } } = await worker.recognize(dataUrl);
+      
+      const pageLines = text.split('\n').map((l: string) => l.trim()).filter(Boolean);
+      console.log(`[bank-parser OCR] Page ${p}: ${pageLines.length} lines recognized`);
+      allLines.push(...pageLines);
+      
+      try { page.cleanup(); } catch { /* ignore */ }
+      // Remove canvas from memory
+      canvas.width = 0;
+      canvas.height = 0;
+    }
+    
+    console.log(`[bank-parser OCR] Total OCR lines: ${allLines.length}`);
+    if (allLines.length > 0) {
+      console.log('[bank-parser OCR] First 10 lines:', allLines.slice(0, 10));
+    }
+    
+    try { await (doc as any)?.destroy?.(); } catch { /* ignore */ }
+    
+    onProgress?.("OCR complete!", 95);
+    
+    return {
+      lines: allLines,
+      pages: pageCount,
+      totalPages: doc.numPages,
+      skippedPages: Math.max(0, doc.numPages - pageCount),
+      warnings,
+    };
+  } finally {
+    await worker.terminate();
   }
 }
 
@@ -541,9 +616,10 @@ function parseRow(line: string, defaultYear: number): ParsedTxn | null {
   };
 }
 
-export async function parseBankStatement(file: File): Promise<ParseResult> {
-  const extraction = await extractLines(file);
-  const { lines, pages } = extraction;
+export function parseFromExtraction(
+  extraction: ExtractionResult,
+): ParseResult {
+  const { lines } = extraction;
   const bank = detectBank(lines.join("\n"));
   const defaultYear = detectDocumentYear(lines);
 
@@ -581,12 +657,17 @@ export async function parseBankStatement(file: File): Promise<ParseResult> {
     bank,
     transactions: rows,
     totalPages: extraction.totalPages,
-    scannedPages: pages,
+    scannedPages: extraction.pages,
     skippedPages: extraction.skippedPages,
     rawLines: lines.length,
     flagged: rows.filter((r) => r.needsReview).length,
     aiCandidateText: candidateRows.join("\n"),
     extractionWarning: extraction.warnings[0],
   };
+}
+
+export async function parseBankStatement(file: File): Promise<ParseResult> {
+  const extraction = await extractLines(file);
+  return parseFromExtraction(extraction);
 }
 

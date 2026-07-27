@@ -9,7 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Progress } from "@/components/ui/progress";
 import { Upload, FileText, CheckCircle2, X, Building2, Plus, TrendingUp, TrendingDown, ListChecks } from "lucide-react";
 import { toast } from "sonner";
-import { parseBankStatement, cleanDescriptionAndRef, type ParseResult, type ParsedTxn } from "@/lib/bank-parser";
+import { parseBankStatement, ocrExtractLines, parseFromExtraction, cleanDescriptionAndRef, type ParseResult, type ParsedTxn } from "@/lib/bank-parser";
 import { api } from "@/lib/api";
 import type { Category, PaymentMethod, Transaction } from "@/lib/types";
 import { inr } from "@/lib/format";
@@ -82,8 +82,36 @@ function BankStatementPage() {
         res = { bank: "Bank", transactions: [], totalPages: 0, rawLines: 0, flagged: 0 };
       }
       if (!isCurrentRun()) return;
+
+      // If no text was extracted, try OCR
+      if (res.rawLines === 0) {
+        console.log("[bank-statement] No text layer found — falling back to OCR…");
+        setStatus("No text layer found — starting OCR scan…");
+        setProgress(15);
+        try {
+          const ocrExtraction = await ocrExtractLines(f, (status, pct) => {
+            if (!isCurrentRun()) return;
+            setStatus(status);
+            setProgress(pct);
+          });
+          if (!isCurrentRun()) return;
+          console.log("[bank-statement] OCR extraction result:", {
+            lines: ocrExtraction.lines.length,
+            pages: ocrExtraction.pages,
+          });
+          if (ocrExtraction.lines.length > 0) {
+            res = parseFromExtraction(ocrExtraction);
+            toast.info("Text extracted using OCR — please verify the values.");
+          }
+        } catch (ocrErr) {
+          console.error("OCR extraction failed:", ocrErr);
+          toast.error("OCR extraction failed — please try a different file.");
+        }
+      }
+      if (!isCurrentRun()) return;
+
       setProgress(50);
-      console.log("[bank-statement] Parse result:", {
+      console.log("[bank-statement] Final parse result:", {
         bank: res.bank,
         transactions: res.transactions.length,
         rawLines: res.rawLines,
@@ -95,7 +123,7 @@ function BankStatementPage() {
         toast.info(res.extractionWarning);
       }
       if (res.transactions.length === 0 && res.rawLines === 0) {
-        setStatus("No readable text found in this PDF — it may be a scanned image or password-protected.");
+        setStatus("No readable text found in this PDF.");
       } else if (res.transactions.length === 0) {
         setStatus(`Found ${res.rawLines} text lines but no transaction rows matched.`);
       }
@@ -105,7 +133,7 @@ function BankStatementPage() {
       setProgress(100);
       setStatus("Done");
       if (res.transactions.length === 0 && res.rawLines === 0) {
-        toast.warning("No text detected — this statement may be a scanned image or password-protected PDF");
+        toast.warning("No text detected even with OCR — the PDF may be corrupted or empty.");
       } else if (res.transactions.length === 0) {
         toast.warning(`Found ${res.rawLines} text lines but could not match any transaction rows. The statement format may not be supported yet.`);
       } else {
@@ -184,7 +212,7 @@ function BankStatementPage() {
             SBI · HDFC · ICICI · Axis · PNB · Kotak · Yes Bank · IDFC
           </p>
           <p className="mt-1 text-xs text-muted-foreground/70">
-            ⚠️ Only upload <strong>password-free, text-based</strong> PDFs. Scanned images and password-protected files cannot be parsed.
+            📄 Upload <strong>password-free</strong> PDFs. Supports both text-based and scanned image statements.
           </p>
           <Button
             className="mt-5 gradient-primary text-primary-foreground"
@@ -419,8 +447,8 @@ function TransactionsTable({ rows }: { rows: ParsedTxn[] }) {
           <div>
             <p className="text-sm text-muted-foreground">No transactions detected.</p>
             <p className="mt-2 text-xs text-muted-foreground/70">
-              Please make sure your PDF is <strong>not password-protected</strong> and contains <strong>selectable text</strong> (not a scanned image).<br />
-              Tip: Try opening the PDF and selecting text with your mouse. If you can't select any text, the file is a scanned image and cannot be parsed.
+              Please make sure your PDF is <strong>not password-protected</strong>.<br />
+              The statement format may not be supported yet. Try a different bank or statement period.
             </p>
           </div>
         </div>
