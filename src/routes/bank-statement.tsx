@@ -7,7 +7,10 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Progress } from "@/components/ui/progress";
-import { Upload, FileText, CheckCircle2, X, Building2, Plus, TrendingUp, TrendingDown, ListChecks } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Upload, FileText, CheckCircle2, X, Building2, Plus, TrendingUp, TrendingDown, ListChecks, Trash2, Pencil, Clipboard } from "lucide-react";
 import { toast } from "sonner";
 import { parseBankStatement, ocrExtractLines, parseFromExtraction, cleanDescriptionAndRef, type ParseResult, type ParsedTxn } from "@/lib/bank-parser";
 import { api } from "@/lib/api";
@@ -31,6 +34,8 @@ export const Route = createFileRoute("/bank-statement")({
 });
 
 function BankStatementPage() {
+  const [tabMode, setTabMode] = useState<"pdf" | "paste">("pdf");
+  const [pastedText, setPastedText] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [result, setResult] = useState<ParseResult | null>(null);
   const [busy, setBusy] = useState(false);
@@ -38,6 +43,7 @@ function BankStatementPage() {
   const [status, setStatus] = useState<string>("");
   const [dragOver, setDragOver] = useState(false);
   const [parseRunId, setParseRunId] = useState(0);
+  const [editingRow, setEditingRow] = useState<ParsedTxn | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const activeParseRef = useRef(0);
 
@@ -133,9 +139,9 @@ function BankStatementPage() {
       setProgress(100);
       setStatus("Done");
       if (res.transactions.length === 0 && res.rawLines === 0) {
-        toast.warning("No text detected even with OCR — the PDF may be corrupted or empty.");
+        toast.warning("No text detected even with OCR — try pasting statement text below.");
       } else if (res.transactions.length === 0) {
-        toast.warning(`Found ${res.rawLines} text lines but could not match any transaction rows. The statement format may not be supported yet.`);
+        toast.warning(`Found ${res.rawLines} text lines but could not match any transaction rows. You can paste statement text directly.`);
       } else {
         toast.success(`Extracted ${res.transactions.length} transactions from ${res.bank}`);
       }
@@ -150,10 +156,54 @@ function BankStatementPage() {
     }
   }
 
+  function handleParsePastedText() {
+    if (!pastedText.trim()) {
+      toast.error("Please paste statement text or CSV rows first");
+      return;
+    }
+    const lines = pastedText.split("\n").map((l) => l.trim()).filter(Boolean);
+    if (lines.length === 0) {
+      toast.error("No text lines found in pasted content");
+      return;
+    }
+    const res = parseFromExtraction({
+      lines,
+      pages: 1,
+      totalPages: 1,
+      skippedPages: 0,
+      warnings: [],
+    });
+    setResult(res);
+    if (res.transactions.length === 0) {
+      toast.warning("Could not detect structured transactions in pasted text. Make sure it contains dates and amounts.");
+    } else {
+      toast.success(`Extracted ${res.transactions.length} transactions from pasted text!`);
+    }
+  }
+
+  function handleDeleteRow(id: string) {
+    if (!result) return;
+    setResult({
+      ...result,
+      transactions: result.transactions.filter((t) => t.id !== id),
+    });
+    toast.info("Row removed");
+  }
+
+  function handleSaveRow(updated: ParsedTxn) {
+    if (!result) return;
+    setResult({
+      ...result,
+      transactions: result.transactions.map((t) => (t.id === updated.id ? updated : t)),
+    });
+    setEditingRow(null);
+    toast.success("Row updated");
+  }
 
   function reset() {
     activeParseRef.current += 1;
     if (inputRef.current) inputRef.current.value = "";
+    setPastedText("");
     clearParsingState(null);
   }
 
@@ -163,262 +213,328 @@ function BankStatementPage() {
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4 }}
+        className="flex flex-wrap items-center justify-between gap-4"
       >
-        <h1 className="font-display text-2xl font-bold tracking-tight md:text-3xl">
-          Bank Statement Analyzer
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          Upload a PDF statement. We extract every real transaction — never guessed, never invented.
-        </p>
+        <div>
+          <h1 className="font-display text-2xl font-bold tracking-tight md:text-3xl">
+            Bank Statement Analyzer
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            Upload a PDF statement or paste statement text. We extract every real transaction accurately.
+          </p>
+        </div>
+        <div className="flex rounded-xl border border-border/60 bg-muted/40 p-1">
+          <Button
+            size="sm"
+            variant={tabMode === "pdf" ? "secondary" : "ghost"}
+            onClick={() => setTabMode("pdf")}
+            className="rounded-lg text-xs"
+          >
+            <Upload className="mr-1.5 h-3.5 w-3.5" /> Upload PDF
+          </Button>
+          <Button
+            size="sm"
+            variant={tabMode === "paste" ? "secondary" : "ghost"}
+            onClick={() => setTabMode("paste")}
+            className="rounded-lg text-xs"
+          >
+            <Clipboard className="mr-1.5 h-3.5 w-3.5" /> Paste Text / CSV
+          </Button>
+        </div>
       </motion.div>
 
-      {/* Upload zone */}
-      <motion.div
-        initial={{ opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.05, duration: 0.4 }}
-      >
-        <Card
-          onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-          onDragLeave={() => setDragOver(false)}
-          onDrop={(e) => {
-            e.preventDefault();
-            setDragOver(false);
-            const f = e.dataTransfer.files[0];
-            if (f) handleFile(f);
-          }}
-          className={cn(
-            "gradient-card border-dashed border-2 p-8 text-center transition-all",
-            dragOver ? "border-primary shadow-glow" : "border-border/60",
-          )}
+      {/* Mode 1: PDF Upload zone */}
+      {tabMode === "pdf" && (
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.05, duration: 0.4 }}
         >
-          <input
-            ref={inputRef}
-            type="file"
-            accept="application/pdf,.pdf"
-            className="hidden"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              // Reset so selecting the same file again re-triggers onChange.
-              e.target.value = "";
+          <Card
+            onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setDragOver(false);
+              const f = e.dataTransfer.files[0];
               if (f) handleFile(f);
             }}
-          />
-          <div className="mx-auto grid h-16 w-16 place-items-center rounded-2xl gradient-primary shadow-glow">
-            <Upload className="h-7 w-7 text-primary-foreground" />
-          </div>
-          <h3 className="mt-4 font-display text-lg font-semibold">Drop your PDF here</h3>
-          <p className="mt-1 text-sm text-muted-foreground">
-            SBI · HDFC · ICICI · Axis · PNB · Kotak · Yes Bank · IDFC
-          </p>
-          <p className="mt-1 text-xs text-muted-foreground/70">
-            📄 Upload <strong>password-free</strong> PDFs. Supports both text-based and scanned image statements.
-          </p>
-          <Button
-            className="mt-5 gradient-primary text-primary-foreground"
-            onClick={() => {
-              if (inputRef.current) inputRef.current.value = "";
-              inputRef.current?.click();
-            }}
+            className={cn(
+              "gradient-card border-dashed border-2 p-8 text-center transition-all",
+              dragOver ? "border-primary shadow-glow" : "border-border/60",
+            )}
           >
-            Choose file
-          </Button>
-        </Card>
-      </motion.div>
+            <input
+              ref={inputRef}
+              type="file"
+              accept="application/pdf,.pdf"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                e.target.value = "";
+                if (f) handleFile(f);
+              }}
+            />
+            <div className="mx-auto grid h-16 w-16 place-items-center rounded-2xl gradient-primary shadow-glow">
+              <Upload className="h-7 w-7 text-primary-foreground" />
+            </div>
+            <h3 className="mt-4 font-display text-lg font-semibold">Drop your PDF here</h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              SBI · HDFC · ICICI · Axis · PNB · Kotak · Yes Bank · IDFC
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground/70">
+              📄 Upload <strong>password-free</strong> PDFs. Supports both text-based and scanned image statements.
+            </p>
+            <Button
+              className="mt-5 gradient-primary text-primary-foreground"
+              onClick={() => {
+                if (inputRef.current) inputRef.current.value = "";
+                inputRef.current?.click();
+              }}
+            >
+              Choose file
+            </Button>
+          </Card>
+        </motion.div>
+      )}
 
-      {/* File status */}
+      {/* Mode 2: Paste Statement Text */}
+      {tabMode === "paste" && (
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.05, duration: 0.4 }}
+        >
+          <Card className="gradient-card p-6 border-border/60">
+            <h3 className="font-display text-base font-semibold">Paste Statement Text or CSV</h3>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Copy transaction rows directly from your bank website, PDF viewer, or CSV file and paste below.
+            </p>
+            <Textarea
+              value={pastedText}
+              onChange={(e) => setPastedText(e.target.value)}
+              placeholder="e.g.&#10;15/06/2024 Swiggy UPI/416592 450.00 Dr 12500.00&#10;16/06/2024 Salary Credit 45000.00 Cr 57500.00"
+              className="mt-3 min-h-[160px] font-mono text-xs"
+            />
+            <div className="mt-4 flex justify-end gap-2">
+              <Button variant="outline" size="sm" onClick={() => setPastedText("")} disabled={!pastedText}>
+                Clear
+              </Button>
+              <Button size="sm" className="gradient-primary text-primary-foreground" onClick={handleParsePastedText}>
+                <Plus className="mr-1.5 h-3.5 w-3.5" /> Parse Pasted Text
+              </Button>
+            </div>
+          </Card>
+        </motion.div>
+      )}
+
+      {/* File status / progress */}
       <AnimatePresence>
-        {file && (
+        {busy && (
           <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
           >
             <Card className="gradient-card border-border/60 p-4">
-              <div className="flex items-center gap-3">
-                <div className="grid h-10 w-10 place-items-center rounded-xl bg-primary/15 text-primary">
-                  <FileText className="h-5 w-5" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm font-semibold">{file.name}</div>
-                  <div className="text-xs text-muted-foreground">
-                    {(file.size / 1024).toFixed(1)} KB
-                    {result && ` · ${result.scannedPages ?? result.totalPages}/${result.totalPages} pages · ${result.rawLines} lines scanned`}
-                  </div>
-                </div>
-                <Button size="icon" variant="ghost" onClick={reset} className="rounded-xl">
-                  <X className="h-4 w-4" />
-                </Button>
+              <div className="flex items-center justify-between text-xs text-muted-foreground mb-2">
+                <span>{status}</span>
+                <span>{progress}%</span>
               </div>
-              {busy && (
-                <div className="mt-3 space-y-1.5">
-                  <div className="flex items-center justify-between gap-2 text-xs">
-                    <span className="flex items-center gap-2 text-muted-foreground">
-                      <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-primary" />
-                      {status || "Please wait — parsing your statement…"}
-                    </span>
-                    <span className="font-semibold tabular-nums text-primary">{progress}%</span>
-                  </div>
-                  <Progress value={progress} className="h-1.5" />
-                </div>
-              )}
+              <Progress value={progress} className="h-2" />
             </Card>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* Summary + transactions */}
-      <AnimatePresence>
-        {result && (
-          <motion.div
-            key="results"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.45 }}
-            className="space-y-6"
-          >
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-              <StatCard icon={Building2} label="Bank" value={result.bank} tone="primary" />
-              <StatCard
-                icon={ListChecks}
-                label="Transactions"
-                value={String(result.transactions.length)}
-                tone="accent"
-              />
-              <StatCard
-                icon={TrendingUp}
-                label="Total credits"
-                value={inr(result.transactions.reduce((s, t) => s + (t.credit ?? 0), 0))}
-                tone="success"
-              />
-              <StatCard
-                icon={TrendingDown}
-                label="Total debits"
-                value={inr(result.transactions.reduce((s, t) => s + (t.debit ?? 0), 0))}
-                tone="warning"
-              />
-            </div>
+      {/* Results grid / table */}
+      {result && (
+        <ResultTable
+          key={parseRunId}
+          result={result}
+          onDeleteRow={handleDeleteRow}
+          onEditRow={(row) => setEditingRow(row)}
+        />
+      )}
 
-            <TransactionsTable key={parseRunId} rows={result.transactions} />
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* Edit Row Dialog */}
+      {editingRow && (
+        <EditRowModal
+          row={editingRow}
+          onClose={() => setEditingRow(null)}
+          onSave={handleSaveRow}
+        />
+      )}
     </div>
   );
 }
 
-function inferCategory(desc: string): Category {
-  const d = desc.toLowerCase();
-  if (/salary|payroll|stipend/.test(d)) return "Salary";
-  if (/swiggy|zomato|restaurant|food|cafe|dining/.test(d)) return "Food & Dining";
-  if (/uber|ola|rapido|metro|fuel|petrol|diesel/.test(d)) return "Transport";
-  if (/amazon|flipkart|myntra|shopping|mall/.test(d)) return "Shopping";
-  if (/netflix|prime|spotify|hotstar|entertainment/.test(d)) return "Entertainment";
-  if (/electricity|water|gas|broadband|mobile|recharge|bill/.test(d)) return "Bills & Utilities";
-  if (/hospital|pharmacy|medic|health/.test(d)) return "Health";
-  if (/mutual|sip|invest|stock|zerodha|groww/.test(d)) return "Investments";
-  if (/neft|imps|upi|transfer/.test(d)) return "Transfer";
-  return "Other";
-}
-
-
-function StatCard({
-  icon: Icon, label, value, tone,
+function EditRowModal({
+  row,
+  onClose,
+  onSave,
 }: {
-  icon: React.ComponentType<{ className?: string }>;
-  label: string; value: string;
-  tone: "primary" | "success" | "warning" | "accent" | "muted";
+  row: ParsedTxn;
+  onClose: () => void;
+  onSave: (updated: ParsedTxn) => void;
 }) {
-  const toneMap = {
-    primary: "bg-primary/15 text-primary",
-    success: "bg-success/15 text-success",
-    warning: "bg-warning/15 text-warning",
-    accent: "bg-accent/15 text-accent-foreground",
-    muted: "bg-muted text-muted-foreground",
-  } as const;
+  const [description, setDescription] = useState(row.description);
+  const [rawDate, setRawDate] = useState(row.rawDate);
+  const [debit, setDebit] = useState(row.debit != null ? String(row.debit) : "");
+  const [credit, setCredit] = useState(row.credit != null ? String(row.credit) : "");
+  const [reference, setReference] = useState(row.reference || "");
+
+  function handleFormSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    onSave({
+      ...row,
+      description: description.trim() || "Transaction",
+      rawDate: rawDate.trim(),
+      debit: debit.trim() ? Number(debit) : null,
+      credit: credit.trim() ? Number(credit) : null,
+      reference: reference.trim() || null,
+    });
+  }
+
   return (
-    <Card className="gradient-card border-border/60 p-4">
-      <div className={cn("grid h-9 w-9 place-items-center rounded-xl", toneMap[tone])}>
-        <Icon className="h-4 w-4" />
-      </div>
-      <div className="mt-3 text-xs uppercase tracking-wider text-muted-foreground">{label}</div>
-      <div className="mt-1 font-display text-xl font-semibold">{value}</div>
-    </Card>
+    <Dialog open onOpenChange={() => onClose()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Edit Extracted Transaction</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleFormSubmit} className="space-y-4 py-2">
+          <div>
+            <label className="text-xs font-medium text-muted-foreground">Merchant / Description</label>
+            <Input
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              className="mt-1"
+              placeholder="e.g. Swiggy, Amazon, Salary"
+              required
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">Debit (₹)</label>
+              <Input
+                type="number"
+                step="0.01"
+                value={debit}
+                onChange={(e) => { setDebit(e.target.value); if (e.target.value) setCredit(""); }}
+                className="mt-1"
+                placeholder="0.00"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">Credit (₹)</label>
+              <Input
+                type="number"
+                step="0.01"
+                value={credit}
+                onChange={(e) => { setCredit(e.target.value); if (e.target.value) setDebit(""); }}
+                className="mt-1"
+                placeholder="0.00"
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">Raw Date</label>
+              <Input
+                value={rawDate}
+                onChange={(e) => setRawDate(e.target.value)}
+                className="mt-1"
+                placeholder="15/06/2024"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">Reference / Txn No.</label>
+              <Input
+                value={reference}
+                onChange={(e) => setReference(e.target.value)}
+                className="mt-1"
+                placeholder="e.g. UPI/123456"
+              />
+            </div>
+          </div>
+          <DialogFooter className="pt-2">
+            <Button type="button" variant="outline" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="submit" className="gradient-primary text-primary-foreground">
+              Save Changes
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
 
-function TransactionsTable({ rows }: { rows: ParsedTxn[] }) {
-  const qc = useQueryClient();
+function ResultTable({
+  result,
+  onDeleteRow,
+  onEditRow,
+}: {
+  result: ParseResult;
+  onDeleteRow: (id: string) => void;
+  onEditRow: (row: ParsedTxn) => void;
+}) {
   const navigate = useNavigate();
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const qc = useQueryClient();
+
+  const rows = result.transactions;
+  const importable = useMemo(() => rows.filter((r) => (r.debit ?? 0) > 0 || (r.credit ?? 0) > 0), [rows]);
+
+  const [selected, setSelected] = useState<Set<string>>(() => new Set(importable.map((r) => r.id)));
   const [added, setAdded] = useState<Set<string>>(new Set());
 
-  const importable = useMemo(
-    () => rows.filter((r) => (r.debit ?? 0) > 0 || (r.credit ?? 0) > 0),
-    [rows],
-  );
-
-  const toggle = (id: string) =>
-    setSelected((s) => {
-      const n = new Set(s);
-      n.has(id) ? n.delete(id) : n.add(id);
-      return n;
+  function toggle(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
     });
-  const toggleAll = () =>
-    setSelected((s) =>
-      s.size === importable.length ? new Set() : new Set(importable.map((r) => r.id)),
-    );
+  }
 
-  async function importRows(list: ParsedTxn[]) {
-    const accs = await api.listAccounts();
-    const accountId = accs[0]?.id ?? "unassigned";
-    const payloads = list
-      .map((r) => {
-        const isCredit = (r.credit ?? 0) > 0;
-        const amount = isCredit ? r.credit! : r.debit!;
-        if (!amount || amount <= 0) return null;
-        const { cleanMerchant, reference } = cleanDescriptionAndRef(r.description, r.reference);
-        return {
-          type: isCredit ? ("income" as const) : ("expense" as const),
-          amount,
-          category: isCredit ? "Salary" : inferCategory(cleanMerchant),
-          merchant: cleanMerchant,
-          date: r.date ?? new Date().toISOString(),
-          notes: reference ? `Ref: ${reference}` : undefined,
-          paymentMethod: "Bank" as PaymentMethod,
-          accountId,
-        };
-      })
-      .filter((x): x is NonNullable<typeof x> => x !== null);
-
-    // Chunked write to keep the main thread responsive for very large statements.
-    const CHUNK = 500;
-    const created: Transaction[] = [];
-    for (let i = 0; i < payloads.length; i += CHUNK) {
-      const slice = payloads.slice(i, i + CHUNK);
-      const batch = await api.createTransactionsBulk(slice);
-      created.push(...batch);
-      if (i + CHUNK < payloads.length) {
-        // yield to the event loop between chunks so the UI stays smooth
-        await new Promise((r) => setTimeout(r, 0));
-      }
+  function toggleAll() {
+    if (selected.size === importable.length) {
+      setSelected(new Set());
+    } else {
+      setSelected(new Set(importable.map((r) => r.id)));
     }
-    return { count: created.length, created };
   }
 
   const importMut = useMutation({
-    mutationFn: async (list: ParsedTxn[]) => importRows(list),
+    mutationFn: async (list: ParsedTxn[]) => {
+      const createdList: Transaction[] = [];
+      for (const r of list) {
+        const isCredit = (r.credit ?? 0) > 0;
+        const amount = isCredit ? r.credit! : r.debit!;
+        if (!amount || amount <= 0) continue;
+        const { cleanMerchant, reference } = cleanDescriptionAndRef(r.description, r.reference);
+        const created = await api.createTransaction({
+          type: isCredit ? "income" : "expense",
+          amount,
+          merchant: cleanMerchant || "Bank Statement Import",
+          category: isCredit ? "Income" : "Shopping",
+          paymentMethod: "Bank Transfer" as PaymentMethod,
+          date: r.date ?? new Date().toISOString(),
+          notes: reference ? `Ref: ${reference}` : undefined,
+        });
+        createdList.push(created);
+      }
+      return { count: createdList.length, created: createdList };
+    },
     onMutate: (list) => {
-      // Optimistic UI: mark rows as added instantly.
       setAdded((s) => {
         const n = new Set(s);
         list.forEach((r) => n.add(r.id));
         return n;
       });
-      setSelected(new Set());
     },
     onSuccess: ({ count, created }) => {
-      // Prepend new transactions to the cache instantly — no refetch needed.
       qc.setQueryData<Transaction[]>(["transactions"], (prev) =>
         prev ? [...created, ...prev] : created,
       );
@@ -429,7 +545,6 @@ function TransactionsTable({ rows }: { rows: ParsedTxn[] }) {
       });
     },
     onError: (_e, list) => {
-      // Roll back optimistic "added" marks on failure.
       setAdded((s) => {
         const n = new Set(s);
         list.forEach((r) => n.delete(r.id));
@@ -439,7 +554,6 @@ function TransactionsTable({ rows }: { rows: ParsedTxn[] }) {
     },
   });
 
-
   if (rows.length === 0) {
     return (
       <Card className="gradient-card border-border/60 p-6">
@@ -447,8 +561,7 @@ function TransactionsTable({ rows }: { rows: ParsedTxn[] }) {
           <div>
             <p className="text-sm text-muted-foreground">No transactions detected.</p>
             <p className="mt-2 text-xs text-muted-foreground/70">
-              Please make sure your PDF is <strong>not password-protected</strong>.<br />
-              The statement format may not be supported yet. Try a different bank or statement period.
+              Try switching to the <strong>Paste Text / CSV</strong> tab above and paste statement text directly.
             </p>
           </div>
         </div>
@@ -499,7 +612,6 @@ function TransactionsTable({ rows }: { rows: ParsedTxn[] }) {
               <th className="px-4 py-3 text-right">Credit</th>
               <th className="px-4 py-3 text-right">Balance</th>
               <th className="px-4 py-3">Ref</th>
-              
               <th className="px-4 py-3 text-right">Action</th>
             </tr>
           </thead>
@@ -533,10 +645,7 @@ function TransactionsTable({ rows }: { rows: ParsedTxn[] }) {
                     <div className="text-xs text-muted-foreground">{r.rawDate}</div>
                   </td>
                   <td className="max-w-md px-4 py-3">
-                    <div className="line-clamp-2">{r.description}</div>
-                    {r.issues.length > 0 && (
-                      <div className="mt-1 text-[10px] text-muted-foreground">{r.issues[0]}</div>
-                    )}
+                    <div className="line-clamp-2 font-medium">{r.description}</div>
                   </td>
                   <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums text-destructive">
                     {r.debit != null ? inr(r.debit) : <span className="text-muted-foreground">—</span>}
@@ -551,20 +660,41 @@ function TransactionsTable({ rows }: { rows: ParsedTxn[] }) {
                     {r.reference ?? "—"}
                   </td>
                   <td className="whitespace-nowrap px-4 py-3 text-right">
-                    {isAdded ? (
-                      <Badge variant="outline" className="gap-1 text-[10px] text-success">
-                        <CheckCircle2 className="h-3 w-3" /> Added
-                      </Badge>
-                    ) : (
+                    <div className="flex items-center justify-end gap-1">
                       <Button
-                        size="sm"
+                        size="icon"
                         variant="ghost"
-                        disabled={!canImport || importMut.isPending}
-                        onClick={() => importMut.mutate([r])}
+                        className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                        title="Edit row"
+                        onClick={() => onEditRow(r)}
                       >
-                        <Plus className="mr-1 h-3.5 w-3.5" /> Add
+                        <Pencil className="h-3.5 w-3.5" />
                       </Button>
-                    )}
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-7 w-7 text-destructive hover:bg-destructive/10"
+                        title="Delete row"
+                        onClick={() => onDeleteRow(r.id)}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                      {isAdded ? (
+                        <Badge variant="outline" className="gap-1 text-[10px] text-success ml-1">
+                          <CheckCircle2 className="h-3 w-3" /> Added
+                        </Badge>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="ml-1"
+                          disabled={!canImport || importMut.isPending}
+                          onClick={() => importMut.mutate([r])}
+                        >
+                          <Plus className="mr-1 h-3.5 w-3.5" /> Add
+                        </Button>
+                      )}
+                    </div>
                   </td>
                 </motion.tr>
               );
@@ -574,5 +704,4 @@ function TransactionsTable({ rows }: { rows: ParsedTxn[] }) {
       </div>
     </Card>
   );
-
 }

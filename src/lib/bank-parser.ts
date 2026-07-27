@@ -524,11 +524,27 @@ function isSummaryOrHeaderLine(line: string): boolean {
     l.startsWith("total debit") ||
     l.startsWith("total credit") ||
     l.startsWith("disclaimer") ||
-    l.startsWith("for testing only")
+    l.startsWith("for testing only") ||
+    l.startsWith("expected amb") ||
+    l.startsWith("expected ama") ||
+    l.startsWith("average balance") ||
+    l.startsWith("average monthly balance") ||
+    l.startsWith("minimum balance") ||
+    l.startsWith("account summary") ||
+    l.startsWith("statement period") ||
+    l.startsWith("nomination registered") ||
+    l.startsWith("branch code") ||
+    l.startsWith("customer id") ||
+    l.startsWith("ifsc") ||
+    l.startsWith("micr") ||
+    l.startsWith("gstin") ||
+    l.startsWith("pan no") ||
+    l.startsWith("fd balance") ||
+    l.startsWith("fixed deposit")
   ) {
     return true;
   }
-  return /^(date|txn|transaction date|value date|statement|page\s+\d|account (no|number)|customer|notes|cash in|cash out)/i.test(l);
+  return /^(date|txn|transaction date|value date|statement|page\s+\d|account\s+(no|number)|customer|notes|cash in|cash out|expected\s+am[ba]|average\s+balance)/i.test(l);
 }
 
 function buildCandidateRows(lines: string[]): string[] {
@@ -727,6 +743,20 @@ function parseRow(line: string, defaultYear: number): ParsedTxn | null {
   }
 
   if (debit === null && credit === null) return null;
+
+  // Additional sanity check: filter out non-transaction descriptions like Expected AMB/AMA, Average Balance, etc.
+  const lowerDesc = description.toLowerCase();
+  if (
+    lowerDesc.includes("expected amb") ||
+    lowerDesc.includes("expected ama") ||
+    lowerDesc.includes("average balance") ||
+    lowerDesc.includes("minimum balance") ||
+    lowerDesc.includes("account summary") ||
+    lowerDesc.includes("nomination registered") ||
+    lowerDesc.includes("statement period")
+  ) {
+    return null;
+  }
 
   return {
     id: `row-${Math.random().toString(36).slice(2, 10)}`,
