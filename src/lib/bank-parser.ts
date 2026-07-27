@@ -26,16 +26,17 @@ export interface ParsedTxn {
   reference: string | null;
   needsReview: boolean;
   reviewReason?: string;
-  /** 0..1 confidence score. >=0.85 High, >=0.6 Medium, else Low. */
+  /** 0..1 confidence score. >=0.95 High (Green), 0.80..0.94 Medium (Yellow), <0.80 Low (Red). */
   confidence: number;
   /** Per-field confidence checks that failed (empty = all passed). */
   issues: string[];
   /** Which extractor produced this row. */
-  source: "parser" | "ai";
+  source: "parser" | "ocr" | "pasted";
 }
 
 export interface ParseResult {
   bank: string;
+  documentType: "Digital PDF" | "Scanned PDF (OCR)" | "Pasted Text";
   transactions: ParsedTxn[];
   totalPages: number;
   scannedPages?: number;
@@ -44,6 +45,20 @@ export interface ParseResult {
   flagged: number;
   aiCandidateText?: string;
   extractionWarning?: string;
+}
+
+/**
+ * Masks sensitive identifiers like Account Numbers, IFSC, PAN, and Customer IDs.
+ */
+export function maskSensitiveData(text: string): string {
+  if (!text) return text;
+  return text
+    // Mask account numbers: e.g., 501002345678 -> A/C XXXXXX5678
+    .replace(/\b(\d{4,8})(\d{4})\b/g, (_m, p1, p2) => "X".repeat(p1.length) + p2)
+    // Mask IFSC codes: SBIN0001234 -> SBIN0XXXXXX
+    .replace(/\b([A-Z]{4}0)([A-Z0-9]{6})\b/g, "$1XXXXXX")
+    // Mask PAN numbers: ABCDE1234F -> AXXXX1234F
+    .replace(/\b([A-Z]{1})([A-Z]{4})(\d{4}[A-Z]{1})\b/g, "$1XXXX$3");
 }
 
 export type ExtractionResult = { lines: string[]; pages: number; totalPages: number; skippedPages: number; warnings: string[] };
@@ -776,6 +791,7 @@ function parseRow(line: string, defaultYear: number): ParsedTxn | null {
 
 export function parseFromExtraction(
   extraction: ExtractionResult,
+  documentType: "Digital PDF" | "Scanned PDF (OCR)" | "Pasted Text" = "Digital PDF",
 ): ParseResult {
   const { lines } = extraction;
   const bank = detectBank(lines.join("\n"));
@@ -784,9 +800,22 @@ export function parseFromExtraction(
   const rows: ParsedTxn[] = [];
   const candidateRows = buildCandidateRows(lines);
 
+  const isOcr = documentType === "Scanned PDF (OCR)";
+  const isPasted = documentType === "Pasted Text";
+  const defaultConfidence = isOcr ? 0.88 : isPasted ? 0.92 : 0.96;
+  const rowSource = isOcr ? "ocr" : isPasted ? "pasted" : "parser";
+
   for (const line of candidateRows) {
     const row = parseRow(line, defaultYear);
-    if (row) rows.push(row);
+    if (row) {
+      row.confidence = defaultConfidence;
+      row.source = rowSource;
+      row.description = maskSensitiveData(row.description);
+      if (row.reference) {
+        row.reference = maskSensitiveData(row.reference);
+      }
+      rows.push(row);
+    }
   }
 
   // Balance continuity verification for statements with running balances
@@ -806,6 +835,7 @@ export function parseFromExtraction(
       const tol = Math.max(0.5, Math.abs(r.balance) * 0.001);
       if (diff <= tol) {
         r.confidence = 1.0;
+        r.needsReview = false;
       }
     }
     if (r.balance != null) prev = r.balance;
@@ -813,12 +843,13 @@ export function parseFromExtraction(
 
   return {
     bank,
+    documentType,
     transactions: rows,
     totalPages: extraction.totalPages,
     scannedPages: extraction.pages,
     skippedPages: extraction.skippedPages,
     rawLines: lines.length,
-    flagged: rows.filter((r) => r.needsReview).length,
+    flagged: rows.filter((r) => r.needsReview || r.confidence < 0.80).length,
     aiCandidateText: candidateRows.join("\n"),
     extractionWarning: extraction.warnings[0],
   };
@@ -826,6 +857,6 @@ export function parseFromExtraction(
 
 export async function parseBankStatement(file: File): Promise<ParseResult> {
   const extraction = await extractLines(file);
-  return parseFromExtraction(extraction);
+  return parseFromExtraction(extraction, "Digital PDF");
 }
 

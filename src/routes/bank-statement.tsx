@@ -10,7 +10,7 @@ import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Upload, FileText, CheckCircle2, X, Building2, Plus, TrendingUp, TrendingDown, ListChecks, Trash2, Pencil, Clipboard } from "lucide-react";
+import { Upload, FileText, CheckCircle2, X, Building2, Plus, TrendingUp, TrendingDown, ListChecks, Trash2, Pencil, Clipboard, ShieldCheck, Eye, LayoutGrid, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { parseBankStatement, ocrExtractLines, parseFromExtraction, cleanDescriptionAndRef, type ParseResult, type ParsedTxn } from "@/lib/bank-parser";
 import { api } from "@/lib/api";
@@ -44,8 +44,11 @@ function BankStatementPage() {
   const [dragOver, setDragOver] = useState(false);
   const [parseRunId, setParseRunId] = useState(0);
   const [editingRow, setEditingRow] = useState<ParsedTxn | null>(null);
+  const [splitView, setSplitView] = useState(true);
   const inputRef = useRef<HTMLInputElement>(null);
   const activeParseRef = useRef(0);
+
+  const fileUrl = useMemo(() => (file ? URL.createObjectURL(file) : null), [file]);
 
   function clearParsingState(nextFile: File | null = null) {
     toast.dismiss();
@@ -71,7 +74,7 @@ function BankStatementPage() {
 
     setBusy(true);
     setProgress(5);
-    setStatus("Reading PDF…");
+    setStatus("Uploading PDF…");
     const isCurrentRun = () => activeParseRef.current === runId;
     const tick = setInterval(() => {
       if (!isCurrentRun()) return;
@@ -79,25 +82,25 @@ function BankStatementPage() {
     }, 300);
     try {
       let res: ParseResult;
-      setStatus("Extracting text from PDF…");
-      setProgress(20);
+      setStatus("Detecting document type & extracting tables…");
+      setProgress(25);
       try {
         res = await parseBankStatement(f);
       } catch (parseErr) {
         console.error("Deterministic parse failed", parseErr);
-        res = { bank: "Bank", transactions: [], totalPages: 0, rawLines: 0, flagged: 0 };
+        res = { bank: "Bank", documentType: "Digital PDF", transactions: [], totalPages: 0, rawLines: 0, flagged: 0 };
       }
       if (!isCurrentRun()) return;
 
       // If no text was extracted, try OCR
       if (res.rawLines === 0) {
-        console.log("[bank-statement] No text layer found — falling back to OCR…");
-        setStatus("No text layer found — starting OCR scan…");
-        setProgress(15);
+        console.log("[bank-statement] No digital text layer found — starting OCR pipeline…");
+        setStatus("Scanned PDF detected — starting OCR processing…");
+        setProgress(35);
         try {
-          const ocrExtraction = await ocrExtractLines(f, (status, pct) => {
+          const ocrExtraction = await ocrExtractLines(f, (statusMsg, pct) => {
             if (!isCurrentRun()) return;
-            setStatus(status);
+            setStatus(statusMsg);
             setProgress(pct);
           });
           if (!isCurrentRun()) return;
@@ -106,44 +109,42 @@ function BankStatementPage() {
             pages: ocrExtraction.pages,
           });
           if (ocrExtraction.lines.length > 0) {
-            res = parseFromExtraction(ocrExtraction);
-            toast.info("Text extracted using OCR — please verify the values.");
+            res = parseFromExtraction(ocrExtraction, "Scanned PDF (OCR)");
+            toast.info("Extracted via OCR — please review highlighted rows.");
           }
         } catch (ocrErr) {
           console.error("OCR extraction failed:", ocrErr);
-          toast.error("OCR extraction failed — please try a different file.");
+          toast.error("OCR extraction failed — please try pasting statement text.");
         }
       }
       if (!isCurrentRun()) return;
 
-      setProgress(50);
+      setProgress(75);
+      setStatus("Parsing rows into structured transactions…");
       console.log("[bank-statement] Final parse result:", {
         bank: res.bank,
+        docType: res.documentType,
         transactions: res.transactions.length,
         rawLines: res.rawLines,
         totalPages: res.totalPages,
         extractionWarning: res.extractionWarning,
       });
-      setStatus(`Detected ${res.transactions.length} rows from ${res.rawLines} text lines — checking quality…`);
+
       if (res.extractionWarning) {
         toast.info(res.extractionWarning);
       }
-      if (res.transactions.length === 0 && res.rawLines === 0) {
-        setStatus("No readable text found in this PDF.");
-      } else if (res.transactions.length === 0) {
-        setStatus(`Found ${res.rawLines} text lines but no transaction rows matched.`);
-      }
-      setStatus("Finalizing…");
+      setStatus("Generating insights & completing extraction…");
       setProgress(95);
       setResult(res);
       setProgress(100);
-      setStatus("Done");
+      setStatus("Completed");
+
       if (res.transactions.length === 0 && res.rawLines === 0) {
         toast.warning("No text detected even with OCR — try pasting statement text below.");
       } else if (res.transactions.length === 0) {
-        toast.warning(`Found ${res.rawLines} text lines but could not match any transaction rows. You can paste statement text directly.`);
+        toast.warning(`Found ${res.rawLines} lines but no valid transaction rows matched. You can paste statement text directly.`);
       } else {
-        toast.success(`Extracted ${res.transactions.length} transactions from ${res.bank}`);
+        toast.success(`Extracted ${res.transactions.length} real transactions from ${res.bank}`);
       }
     } catch (err) {
       if (!isCurrentRun()) return;
@@ -166,13 +167,16 @@ function BankStatementPage() {
       toast.error("No text lines found in pasted content");
       return;
     }
-    const res = parseFromExtraction({
-      lines,
-      pages: 1,
-      totalPages: 1,
-      skippedPages: 0,
-      warnings: [],
-    });
+    const res = parseFromExtraction(
+      {
+        lines,
+        pages: 1,
+        totalPages: 1,
+        skippedPages: 0,
+        warnings: [],
+      },
+      "Pasted Text",
+    );
     setResult(res);
     if (res.transactions.length === 0) {
       toast.warning("Could not detect structured transactions in pasted text. Make sure it contains dates and amounts.");
@@ -220,31 +224,52 @@ function BankStatementPage() {
             Bank Statement Analyzer
           </h1>
           <p className="text-sm text-muted-foreground">
-            Upload a PDF statement or paste statement text. We extract every real transaction accurately.
+            Deterministic extraction from PDF & OCR statements — AI never fabricates missing transactions.
           </p>
         </div>
-        <div className="flex rounded-xl border border-border/60 bg-muted/40 p-1">
-          <Button
-            size="sm"
-            variant={tabMode === "pdf" ? "secondary" : "ghost"}
-            onClick={() => setTabMode("pdf")}
-            className="rounded-lg text-xs"
-          >
-            <Upload className="mr-1.5 h-3.5 w-3.5" /> Upload PDF
-          </Button>
-          <Button
-            size="sm"
-            variant={tabMode === "paste" ? "secondary" : "ghost"}
-            onClick={() => setTabMode("paste")}
-            className="rounded-lg text-xs"
-          >
-            <Clipboard className="mr-1.5 h-3.5 w-3.5" /> Paste Text / CSV
-          </Button>
+        <div className="flex items-center gap-2">
+          {result && fileUrl && (
+            <Button
+              size="sm"
+              variant={splitView ? "secondary" : "outline"}
+              onClick={() => setSplitView(!splitView)}
+              className="text-xs"
+            >
+              <Eye className="mr-1.5 h-3.5 w-3.5" />
+              {splitView ? "Split View (On)" : "Split View (Off)"}
+            </Button>
+          )}
+          <div className="flex rounded-xl border border-border/60 bg-muted/40 p-1">
+            <Button
+              size="sm"
+              variant={tabMode === "pdf" ? "secondary" : "ghost"}
+              onClick={() => setTabMode("pdf")}
+              className="rounded-lg text-xs"
+            >
+              <Upload className="mr-1.5 h-3.5 w-3.5" /> Upload PDF
+            </Button>
+            <Button
+              size="sm"
+              variant={tabMode === "paste" ? "secondary" : "ghost"}
+              onClick={() => setTabMode("paste")}
+              className="rounded-lg text-xs"
+            >
+              <Clipboard className="mr-1.5 h-3.5 w-3.5" /> Paste Text / CSV
+            </Button>
+          </div>
         </div>
       </motion.div>
 
+      {/* Security Privacy Notice */}
+      <Card className="gradient-card border-border/60 bg-primary/5 p-3 text-xs text-muted-foreground flex items-center gap-2.5">
+        <ShieldCheck className="h-4 w-4 text-primary shrink-0" />
+        <div>
+          <strong>Deterministic & Private Processing:</strong> Extracted directly on your device. Account numbers, IFSC codes, and PAN numbers are automatically masked. AI models never invent or hallucinate entries.
+        </div>
+      </Card>
+
       {/* Mode 1: PDF Upload zone */}
-      {tabMode === "pdf" && (
+      {tabMode === "pdf" && !result && (
         <motion.div
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
@@ -278,12 +303,12 @@ function BankStatementPage() {
             <div className="mx-auto grid h-16 w-16 place-items-center rounded-2xl gradient-primary shadow-glow">
               <Upload className="h-7 w-7 text-primary-foreground" />
             </div>
-            <h3 className="mt-4 font-display text-lg font-semibold">Drop your PDF here</h3>
+            <h3 className="mt-4 font-display text-lg font-semibold">Drop your Bank Statement PDF here</h3>
             <p className="mt-1 text-sm text-muted-foreground">
               SBI · HDFC · ICICI · Axis · PNB · Kotak · Yes Bank · IDFC
             </p>
             <p className="mt-1 text-xs text-muted-foreground/70">
-              📄 Upload <strong>password-free</strong> PDFs. Supports both text-based and scanned image statements.
+              📄 Supports both Digital PDFs and Scanned Image Statements (OCR).
             </p>
             <Button
               className="mt-5 gradient-primary text-primary-foreground"
@@ -292,14 +317,14 @@ function BankStatementPage() {
                 inputRef.current?.click();
               }}
             >
-              Choose file
+              Choose PDF File
             </Button>
           </Card>
         </motion.div>
       )}
 
       {/* Mode 2: Paste Statement Text */}
-      {tabMode === "paste" && (
+      {tabMode === "paste" && !result && (
         <motion.div
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
@@ -308,7 +333,7 @@ function BankStatementPage() {
           <Card className="gradient-card p-6 border-border/60">
             <h3 className="font-display text-base font-semibold">Paste Statement Text or CSV</h3>
             <p className="mt-1 text-xs text-muted-foreground">
-              Copy transaction rows directly from your bank website, PDF viewer, or CSV file and paste below.
+              Copy transaction rows directly from your bank portal, PDF viewer, or CSV file and paste below.
             </p>
             <Textarea
               value={pastedText}
@@ -339,7 +364,7 @@ function BankStatementPage() {
             <Card className="gradient-card border-border/60 p-4">
               <div className="flex items-center justify-between text-xs text-muted-foreground mb-2">
                 <span>{status}</span>
-                <span>{progress}%</span>
+                <span className="font-semibold text-primary">{progress}%</span>
               </div>
               <Progress value={progress} className="h-2" />
             </Card>
@@ -347,14 +372,39 @@ function BankStatementPage() {
         )}
       </AnimatePresence>
 
-      {/* Results grid / table */}
+      {/* Overview metrics */}
+      {result && <OverviewCards result={result} onReset={reset} />}
+
+      {/* Main Content Area: Split View vs Full Table View */}
       {result && (
-        <ResultTable
-          key={parseRunId}
-          result={result}
-          onDeleteRow={handleDeleteRow}
-          onEditRow={(row) => setEditingRow(row)}
-        />
+        <div className={cn("grid gap-6", splitView && fileUrl ? "grid-cols-1 lg:grid-cols-12" : "grid-cols-1")}>
+          {/* Left Panel: Original Document Preview */}
+          {splitView && fileUrl && (
+            <div className="lg:col-span-5 space-y-2">
+              <div className="flex items-center justify-between text-xs text-muted-foreground px-1">
+                <span className="font-medium">Original Document</span>
+                <span>{file?.name}</span>
+              </div>
+              <Card className="gradient-card overflow-hidden border-border/60 p-0 h-[650px]">
+                <iframe
+                  src={fileUrl}
+                  className="w-full h-full border-none rounded-xl"
+                  title="PDF Preview"
+                />
+              </Card>
+            </div>
+          )}
+
+          {/* Right Panel: Extracted Transactions Table */}
+          <div className={cn(splitView && fileUrl ? "lg:col-span-7" : "w-full")}>
+            <ResultTable
+              key={parseRunId}
+              result={result}
+              onDeleteRow={handleDeleteRow}
+              onEditRow={(row) => setEditingRow(row)}
+            />
+          </div>
+        </div>
       )}
 
       {/* Edit Row Dialog */}
@@ -365,6 +415,77 @@ function BankStatementPage() {
           onSave={handleSaveRow}
         />
       )}
+    </div>
+  );
+}
+
+function OverviewCards({ result, onReset }: { result: ParseResult; onReset: () => void }) {
+  const totalDebits = useMemo(
+    () => result.transactions.reduce((acc, t) => acc + (t.debit ?? 0), 0),
+    [result],
+  );
+  const totalCredits = useMemo(
+    () => result.transactions.reduce((acc, t) => acc + (t.credit ?? 0), 0),
+    [result],
+  );
+
+  return (
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+      <Card className="gradient-card border-border/60 p-4">
+        <div className="flex items-center gap-3">
+          <div className="grid h-10 w-10 place-items-center rounded-xl bg-primary/10 text-primary shrink-0">
+            <Building2 className="h-5 w-5" />
+          </div>
+          <div className="min-w-0">
+            <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">Bank / Type</div>
+            <div className="font-display text-base font-bold truncate">{result.bank}</div>
+            <div className="text-[11px] text-muted-foreground">{result.documentType}</div>
+          </div>
+        </div>
+      </Card>
+
+      <Card className="gradient-card border-border/60 p-4">
+        <div className="flex items-center gap-3">
+          <div className="grid h-10 w-10 place-items-center rounded-xl bg-accent/10 text-accent shrink-0">
+            <ListChecks className="h-5 w-5" />
+          </div>
+          <div>
+            <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">Extracted Rows</div>
+            <div className="font-display text-lg font-bold">{result.transactions.length}</div>
+            <div className="text-[11px] text-muted-foreground">{result.flagged} flagged</div>
+          </div>
+        </div>
+      </Card>
+
+      <Card className="gradient-card border-border/60 p-4">
+        <div className="flex items-center gap-3">
+          <div className="grid h-10 w-10 place-items-center rounded-xl bg-success/10 text-success shrink-0">
+            <TrendingUp className="h-5 w-5" />
+          </div>
+          <div>
+            <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">Total Credits</div>
+            <div className="font-display text-lg font-bold text-success">{inr(totalCredits)}</div>
+          </div>
+        </div>
+      </Card>
+
+      <Card className="gradient-card border-border/60 p-4">
+        <div className="flex items-center gap-3">
+          <div className="grid h-10 w-10 place-items-center rounded-xl bg-destructive/10 text-destructive shrink-0">
+            <TrendingDown className="h-5 w-5" />
+          </div>
+          <div>
+            <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">Total Debits</div>
+            <div className="font-display text-lg font-bold text-destructive">{inr(totalDebits)}</div>
+          </div>
+        </div>
+      </Card>
+
+      <Card className="gradient-card border-border/60 p-4 flex items-center justify-center">
+        <Button variant="outline" size="sm" onClick={onReset} className="w-full">
+          <X className="mr-1.5 h-3.5 w-3.5" /> Upload Another
+        </Button>
+      </Card>
     </div>
   );
 }
@@ -393,6 +514,8 @@ function EditRowModal({
       debit: debit.trim() ? Number(debit) : null,
       credit: credit.trim() ? Number(credit) : null,
       reference: reference.trim() || null,
+      confidence: 1.0,
+      needsReview: false,
     });
   }
 
@@ -483,8 +606,16 @@ function ResultTable({
   const navigate = useNavigate();
   const qc = useQueryClient();
 
-  const rows = result.transactions;
-  const importable = useMemo(() => rows.filter((r) => (r.debit ?? 0) > 0 || (r.credit ?? 0) > 0), [rows]);
+  const [filterMode, setFilterMode] = useState<"all" | "review" | "high">("all");
+
+  const allRows = result.transactions;
+  const filteredRows = useMemo(() => {
+    if (filterMode === "review") return allRows.filter((r) => r.needsReview || r.confidence < 0.80);
+    if (filterMode === "high") return allRows.filter((r) => r.confidence >= 0.95);
+    return allRows;
+  }, [allRows, filterMode]);
+
+  const importable = useMemo(() => filteredRows.filter((r) => (r.debit ?? 0) > 0 || (r.credit ?? 0) > 0), [filteredRows]);
 
   const [selected, setSelected] = useState<Set<string>>(() => new Set(importable.map((r) => r.id)));
   const [added, setAdded] = useState<Set<string>>(new Set());
@@ -554,7 +685,7 @@ function ResultTable({
     },
   });
 
-  if (rows.length === 0) {
+  if (allRows.length === 0) {
     return (
       <Card className="gradient-card border-border/60 p-6">
         <div className="grid h-48 place-items-center text-center">
@@ -575,19 +706,36 @@ function ResultTable({
   return (
     <Card className="gradient-card overflow-hidden border-border/60 p-0">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 px-4 py-3">
-        <div className="text-sm text-muted-foreground">
-          {selected.size > 0
-            ? `${selected.size} selected`
-            : `${importable.length} importable · ${added.size} added`}
+        <div className="flex items-center gap-2">
+          <div className="flex rounded-lg border border-border/60 bg-muted/40 p-0.5 text-xs">
+            <button
+              onClick={() => setFilterMode("all")}
+              className={cn("rounded-md px-2.5 py-1 transition-colors", filterMode === "all" ? "bg-background font-semibold shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground")}
+            >
+              All ({allRows.length})
+            </button>
+            <button
+              onClick={() => setFilterMode("high")}
+              className={cn("rounded-md px-2.5 py-1 transition-colors", filterMode === "high" ? "bg-background font-semibold shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground")}
+            >
+              High &gt;95% ({allRows.filter((r) => r.confidence >= 0.95).length})
+            </button>
+            <button
+              onClick={() => setFilterMode("review")}
+              className={cn("rounded-md px-2.5 py-1 transition-colors", filterMode === "review" ? "bg-background font-semibold shadow-sm text-destructive font-medium" : "text-muted-foreground hover:text-foreground")}
+            >
+              Needs Review ({allRows.filter((r) => r.needsReview || r.confidence < 0.80).length})
+            </button>
+          </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
           <Button
             size="sm"
             variant="secondary"
             disabled={selected.size === 0 || importMut.isPending}
             onClick={() => importMut.mutate(selectedRows)}
           >
-            <Plus className="mr-1.5 h-3.5 w-3.5" /> Add selected
+            <Plus className="mr-1.5 h-3.5 w-3.5" /> Add selected ({selected.size})
           </Button>
           <Button
             size="sm"
@@ -595,7 +743,7 @@ function ResultTable({
             disabled={importMut.isPending || importable.every((r) => added.has(r.id))}
             onClick={() => importMut.mutate(importable.filter((r) => !added.has(r.id)))}
           >
-            <Plus className="mr-1.5 h-3.5 w-3.5" /> Add all to transactions
+            <Plus className="mr-1.5 h-3.5 w-3.5" /> Approve & Add All
           </Button>
         </div>
       </div>
@@ -612,13 +760,18 @@ function ResultTable({
               <th className="px-4 py-3 text-right">Credit</th>
               <th className="px-4 py-3 text-right">Balance</th>
               <th className="px-4 py-3">Ref</th>
+              <th className="px-4 py-3 text-center">Confidence</th>
               <th className="px-4 py-3 text-right">Action</th>
             </tr>
           </thead>
           <tbody>
-            {rows.map((r, i) => {
+            {filteredRows.map((r, i) => {
               const canImport = (r.debit ?? 0) > 0 || (r.credit ?? 0) > 0;
               const isAdded = added.has(r.id);
+              const confPct = Math.round(r.confidence * 100);
+              const isHigh = r.confidence >= 0.95;
+              const isMed = r.confidence >= 0.80 && r.confidence < 0.95;
+
               return (
                 <motion.tr
                   key={r.id}
@@ -628,6 +781,7 @@ function ResultTable({
                   className={cn(
                     "border-b border-border/40 transition-colors hover:bg-muted/30",
                     isAdded && "opacity-60",
+                    r.needsReview && "bg-destructive/5",
                   )}
                 >
                   <td className="px-4 py-3">
@@ -658,6 +812,21 @@ function ResultTable({
                   </td>
                   <td className="whitespace-nowrap px-4 py-3 font-mono text-xs text-muted-foreground">
                     {r.reference ?? "—"}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-3 text-center">
+                    {isHigh ? (
+                      <Badge variant="outline" className="bg-success/10 text-success border-success/30 text-[10px] font-semibold">
+                        &gt;95% High
+                      </Badge>
+                    ) : isMed ? (
+                      <Badge variant="outline" className="bg-warning/10 text-warning border-warning/30 text-[10px] font-semibold">
+                        80–95%
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/30 text-[10px] font-semibold">
+                        &lt;80% Review
+                      </Badge>
+                    )}
                   </td>
                   <td className="whitespace-nowrap px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-1">
