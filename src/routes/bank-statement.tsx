@@ -181,7 +181,10 @@ function BankStatementPage() {
           </div>
           <h3 className="mt-4 font-display text-lg font-semibold">Drop your PDF here</h3>
           <p className="mt-1 text-sm text-muted-foreground">
-            SBI · HDFC · ICICI · Axis · PNB · Kotak · Yes Bank · IDFC — text-based PDFs only
+            SBI · HDFC · ICICI · Axis · PNB · Kotak · Yes Bank · IDFC
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground/70">
+            ⚠️ Only upload <strong>password-free, text-based</strong> PDFs. Scanned images and password-protected files cannot be parsed.
           </p>
           <Button
             className="mt-5 gradient-primary text-primary-foreground"
@@ -411,8 +414,16 @@ function TransactionsTable({ rows }: { rows: ParsedTxn[] }) {
 
   if (rows.length === 0) {
     return (
-      <Card className="gradient-card grid h-48 place-items-center border-border/60 p-6 text-sm text-muted-foreground">
-        No transactions detected. If your statement is a scanned image, please upload a text-based PDF.
+      <Card className="gradient-card border-border/60 p-6">
+        <div className="grid h-48 place-items-center text-center">
+          <div>
+            <p className="text-sm text-muted-foreground">No transactions detected.</p>
+            <p className="mt-2 text-xs text-muted-foreground/70">
+              Please make sure your PDF is <strong>not password-protected</strong> and contains <strong>selectable text</strong> (not a scanned image).<br />
+              Tip: Try opening the PDF and selecting text with your mouse. If you can't select any text, the file is a scanned image and cannot be parsed.
+            </p>
+          </div>
+        </div>
       </Card>
     );
   }
