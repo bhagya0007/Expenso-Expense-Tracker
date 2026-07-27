@@ -191,13 +191,30 @@ export async function extractLines(
   file: File,
 ): Promise<{ lines: string[]; pages: number; totalPages: number; skippedPages: number; warnings: string[] }> {
   const buf = await file.arrayBuffer();
-  const loadingTask = pdfjsLib.getDocument({
-    data: buf,
-    disableFontFace: true,
-    useSystemFonts: false,
-    stopAtErrors: false,
-  });
-  const doc = await withTimeout(loadingTask.promise, 10_000, "Opening PDF");
+
+  let doc: Awaited<ReturnType<typeof pdfjsLib.getDocument["prototype"]["promise"]>>;
+  try {
+    const loadingTask = pdfjsLib.getDocument({
+      data: buf,
+      disableFontFace: true,
+      useSystemFonts: false,
+      stopAtErrors: false,
+    });
+    doc = await withTimeout(loadingTask.promise, 15_000, "Opening PDF");
+  } catch (openErr: any) {
+    console.error("[bank-parser] Failed to open PDF:", openErr);
+    // If the PDF is password-protected, tell the user
+    if (openErr?.name === "PasswordException" || /password/i.test(String(openErr))) {
+      return {
+        lines: [],
+        pages: 0,
+        totalPages: 0,
+        skippedPages: 0,
+        warnings: ["This PDF appears to be password-protected. Please remove the password and re-upload."],
+      };
+    }
+    throw openErr;
+  }
 
   try {
     const pageCount = Math.min(doc.numPages, MAX_PAGES);
@@ -205,7 +222,8 @@ export async function extractLines(
     const warnings: string[] = [];
     const startedAt = Date.now();
 
-    const perPageLines: string[][] = new Array(pageCount);
+    // Initialize with empty arrays so .flat() never hits undefined
+    const perPageLines: string[][] = Array.from({ length: pageCount }, () => []);
 
     for (let start = 1; start <= pageCount; start += PAGE_BATCH_SIZE) {
       if (Date.now() - startedAt > EXTRACTION_BUDGET_MS) {
@@ -215,25 +233,40 @@ export async function extractLines(
       const end = Math.min(start + PAGE_BATCH_SIZE - 1, pageCount);
       await Promise.all(
         Array.from({ length: end - start + 1 }, (_, k) => start + k).map(async (p) => {
-          let page: Awaited<ReturnType<typeof doc.getPage>> | null = null;
+          let page: any = null;
           try {
             page = await withTimeout(doc.getPage(p), PAGE_TIMEOUT_MS, `Loading page ${p}`);
             const content = await withTimeout(page.getTextContent(), PAGE_TIMEOUT_MS, `Reading page ${p}`);
+
             type Tok = { x: number; y: number; str: string };
             const tokens: Tok[] = [];
-            for (const item of content.items as any[]) {
-              if (item && typeof item.str === "string" && item.str.trim()) {
-                const transform = Array.isArray(item.transform) ? item.transform : [1, 0, 0, 1, 0, 0];
+
+            if (content && Array.isArray(content.items)) {
+              for (const item of content.items) {
+                // Skip TextMarkedContent items (they have no .str)
+                if (!item || typeof (item as any).str !== "string") continue;
+                const s = (item as any).str;
+                if (!s.trim()) continue;
+                const tx = Array.isArray((item as any).transform) ? (item as any).transform : [1, 0, 0, 1, 0, 0];
                 tokens.push({
-                  x: typeof transform[4] === "number" ? transform[4] : 0,
-                  y: typeof transform[5] === "number" ? transform[5] : 0,
-                  str: item.str,
+                  x: Number(tx[4]) || 0,
+                  y: Number(tx[5]) || 0,
+                  str: s,
                 });
               }
             }
+
+            console.log(`[bank-parser] Page ${p}: ${content?.items?.length ?? 0} items → ${tokens.length} text tokens`);
+
+            if (tokens.length === 0) {
+              perPageLines[p - 1] = [];
+              return;
+            }
+
             tokens.sort((a, b) => b.y - a.y || a.x - b.x);
 
-            const TOL = 4;
+            // Use a larger Y-tolerance for real bank PDFs which can have slight vertical offsets
+            const TOL = 6;
             let currentY = Infinity;
             let currentRow: Tok[] = [];
             const out: string[] = [];
@@ -252,13 +285,15 @@ export async function extractLines(
               currentRow.push(tok);
             }
             flush();
+
             perPageLines[p - 1] = out;
+            console.log(`[bank-parser] Page ${p}: assembled ${out.length} text lines`);
           } catch (err) {
-            console.warn(`Skipping page ${p}`, err);
+            console.warn(`[bank-parser] Skipping page ${p}:`, err);
             warnings.push(`Page ${p} could not be read quickly and was skipped`);
             perPageLines[p - 1] = [];
           } finally {
-            page?.cleanup();
+            try { page?.cleanup(); } catch { /* ignore cleanup errors */ }
           }
         }),
       );
@@ -266,9 +301,13 @@ export async function extractLines(
     }
 
     const lines = perPageLines.flat();
+    console.log(`[bank-parser] Total extracted lines: ${lines.length} across ${pageCount} pages`);
+    if (lines.length > 0) {
+      console.log("[bank-parser] First 10 lines:", lines.slice(0, 10));
+    }
     return { lines, pages: pageCount, totalPages: doc.numPages, skippedPages, warnings };
   } finally {
-    await loadingTask.destroy().catch(() => undefined);
+    try { await (doc as any)?.destroy?.(); } catch { /* ignore */ }
   }
 }
 

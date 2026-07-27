@@ -83,20 +83,31 @@ function BankStatementPage() {
       }
       if (!isCurrentRun()) return;
       setProgress(50);
-      setStatus(`Detected ${res.transactions.length} rows — checking quality…`);
+      console.log("[bank-statement] Parse result:", {
+        bank: res.bank,
+        transactions: res.transactions.length,
+        rawLines: res.rawLines,
+        totalPages: res.totalPages,
+        extractionWarning: res.extractionWarning,
+      });
+      setStatus(`Detected ${res.transactions.length} rows from ${res.rawLines} text lines — checking quality…`);
       if (res.extractionWarning) {
         toast.info(res.extractionWarning);
       }
-      if (res.transactions.length === 0) {
-        setStatus("No readable transaction text found in this PDF…");
+      if (res.transactions.length === 0 && res.rawLines === 0) {
+        setStatus("No readable text found in this PDF — it may be a scanned image or password-protected.");
+      } else if (res.transactions.length === 0) {
+        setStatus(`Found ${res.rawLines} text lines but no transaction rows matched.`);
       }
       setStatus("Finalizing…");
       setProgress(95);
       setResult(res);
       setProgress(100);
       setStatus("Done");
-      if (res.transactions.length === 0) {
-        toast.warning("No transactions detected — this statement may be a scanned image");
+      if (res.transactions.length === 0 && res.rawLines === 0) {
+        toast.warning("No text detected — this statement may be a scanned image or password-protected PDF");
+      } else if (res.transactions.length === 0) {
+        toast.warning(`Found ${res.rawLines} text lines but could not match any transaction rows. The statement format may not be supported yet.`);
       } else {
         toast.success(`Extracted ${res.transactions.length} transactions from ${res.bank}`);
       }
