@@ -135,6 +135,34 @@ function computeInsights(txs: Transaction[]): Insight[] {
   ];
 }
 
+function updateStoreAccountsWithDeltas(s: Store, deltas: Map<string, number>): Store {
+  if (deltas.size === 0) return s;
+  const nextAccounts = s.accounts.map((a) => {
+    const d = deltas.get(a.id);
+    if (d) {
+      return { ...a, balance: Number((a.balance + d).toFixed(2)) };
+    }
+    return a;
+  });
+  return { ...s, accounts: nextAccounts };
+}
+
+async function syncAccountsToFirestore(uid: string | null, accountIds: Set<string>) {
+  if (!uid || accountIds.size === 0) return;
+  const currentAccounts = read(uid).accounts;
+  for (const accId of accountIds) {
+    const acc = currentAccounts.find((a) => a.id === accId);
+    if (acc) {
+      try {
+        const docRef = doc(db, "users", uid, "accounts", accId);
+        await setDoc(docRef, { ...acc }, { merge: true });
+      } catch (err) {
+        console.error("Firestore sync account balance error:", err);
+      }
+    }
+  }
+}
+
 export const api = {
   // --- transactions ---
   async listTransactions(): Promise<Transaction[]> {
@@ -174,12 +202,26 @@ export const api = {
   async createTransaction(input: Omit<Transaction, "id">): Promise<Transaction> {
     const tx: Transaction = { ...input, id: `tx-${Date.now()}-${Math.random().toString(36).slice(2, 7)}` };
     const uid = currentUid();
-    mutate((s) => ({ ...s, transactions: [tx, ...s.transactions] }));
+
+    const deltas = new Map<string, number>();
+    if (tx.accountId) {
+      const delta = tx.type === "income" ? tx.amount : -tx.amount;
+      deltas.set(tx.accountId, delta);
+    }
+
+    mutate((s) => {
+      const withTx = { ...s, transactions: [tx, ...s.transactions] };
+      return updateStoreAccountsWithDeltas(withTx, deltas);
+    });
+
     if (uid) {
       try {
         await ensureUserDoc(uid);
         const docRef = doc(db, "users", uid, "transactions", tx.id);
         await setDoc(docRef, { ...tx });
+        if (tx.accountId) {
+          await syncAccountsToFirestore(uid, new Set([tx.accountId]));
+        }
       } catch (err) {
         console.error("Firestore setDoc tx error:", err);
       }
@@ -192,11 +234,22 @@ export const api = {
     const now = Date.now();
     const rand = Math.random().toString(36).slice(2, 6);
     const txs: Transaction[] = new Array(inputs.length);
+    const deltas = new Map<string, number>();
+
     for (let i = 0; i < inputs.length; i++) {
       txs[i] = { ...inputs[i], id: `tx-${now}-${i}-${rand}` };
+      if (txs[i].accountId) {
+        const delta = txs[i].type === "income" ? txs[i].amount : -txs[i].amount;
+        deltas.set(txs[i].accountId, (deltas.get(txs[i].accountId) ?? 0) + delta);
+      }
     }
+
     const uid = currentUid();
-    mutate((s) => ({ ...s, transactions: txs.concat(s.transactions) }));
+    mutate((s) => {
+      const withTxs = { ...s, transactions: txs.concat(s.transactions) };
+      return updateStoreAccountsWithDeltas(withTxs, deltas);
+    });
+
     if (uid) {
       try {
         await ensureUserDoc(uid);
@@ -204,6 +257,7 @@ export const api = {
           const docRef = doc(db, "users", uid, "transactions", tx.id);
           await setDoc(docRef, { ...tx });
         }
+        await syncAccountsToFirestore(uid, new Set(deltas.keys()));
       } catch (err) {
         console.error("Firestore bulk tx error:", err);
       }
@@ -213,14 +267,36 @@ export const api = {
 
   async updateTransaction(id: string, patch: Partial<Omit<Transaction, "id">>): Promise<void> {
     const uid = currentUid();
-    mutate((s) => ({
-      ...s,
-      transactions: s.transactions.map((t) => (t.id === id ? { ...t, ...patch } : t)),
-    }));
+    const oldTx = read(uid).transactions.find((t) => t.id === id);
+    const deltas = new Map<string, number>();
+
+    if (oldTx) {
+      // Revert old transaction effect
+      if (oldTx.accountId) {
+        const oldRevert = oldTx.type === "income" ? -oldTx.amount : +oldTx.amount;
+        deltas.set(oldTx.accountId, (deltas.get(oldTx.accountId) ?? 0) + oldRevert);
+      }
+      // Apply new transaction effect
+      const newTx = { ...oldTx, ...patch };
+      if (newTx.accountId) {
+        const newDelta = newTx.type === "income" ? +newTx.amount : -newTx.amount;
+        deltas.set(newTx.accountId, (deltas.get(newTx.accountId) ?? 0) + newDelta);
+      }
+    }
+
+    mutate((s) => {
+      const withPatch = {
+        ...s,
+        transactions: s.transactions.map((t) => (t.id === id ? { ...t, ...patch } : t)),
+      };
+      return updateStoreAccountsWithDeltas(withPatch, deltas);
+    });
+
     if (uid) {
       try {
         const docRef = doc(db, "users", uid, "transactions", id);
         await updateDoc(docRef, patch as any);
+        await syncAccountsToFirestore(uid, new Set(deltas.keys()));
       } catch (err) {
         console.error("Firestore updateTx error:", err);
       }
@@ -229,11 +305,27 @@ export const api = {
 
   async deleteTransaction(id: string): Promise<void> {
     const uid = currentUid();
-    mutate((s) => ({ ...s, transactions: s.transactions.filter((t) => t.id !== id) }));
+    const oldTx = read(uid).transactions.find((t) => t.id === id);
+    const deltas = new Map<string, number>();
+
+    if (oldTx && oldTx.accountId) {
+      const revertDelta = oldTx.type === "income" ? -oldTx.amount : +oldTx.amount;
+      deltas.set(oldTx.accountId, revertDelta);
+    }
+
+    mutate((s) => {
+      const withDel = {
+        ...s,
+        transactions: s.transactions.filter((t) => t.id !== id),
+      };
+      return updateStoreAccountsWithDeltas(withDel, deltas);
+    });
+
     if (uid) {
       try {
         const docRef = doc(db, "users", uid, "transactions", id);
         await deleteDoc(docRef);
+        await syncAccountsToFirestore(uid, new Set(deltas.keys()));
       } catch (err) {
         console.error("Firestore deleteTx error:", err);
       }

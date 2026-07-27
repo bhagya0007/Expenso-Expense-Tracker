@@ -100,6 +100,8 @@ function TransactionsPage() {
     mutationFn: (id: string) => api.deleteTransaction(id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["transactions"] });
+      qc.invalidateQueries({ queryKey: ["accounts"] });
+      qc.invalidateQueries({ queryKey: ["insights"] });
       toast.success("Transaction deleted");
     },
   });
@@ -112,6 +114,8 @@ function TransactionsPage() {
     onSuccess: (count) => {
       setSelected(new Set());
       qc.invalidateQueries({ queryKey: ["transactions"] });
+      qc.invalidateQueries({ queryKey: ["accounts"] });
+      qc.invalidateQueries({ queryKey: ["insights"] });
       toast.success(`Deleted ${count} transaction${count === 1 ? "" : "s"}`);
     },
     onError: () => toast.error("Could not delete selected transactions"),
@@ -126,6 +130,8 @@ function TransactionsPage() {
     onSuccess: (count) => {
       setSelected(new Set());
       qc.invalidateQueries({ queryKey: ["transactions"] });
+      qc.invalidateQueries({ queryKey: ["accounts"] });
+      qc.invalidateQueries({ queryKey: ["insights"] });
       toast.success(`Deleted all ${count} transactions`);
     },
     onError: () => toast.error("Could not delete transactions"),
@@ -495,6 +501,8 @@ function AddTransactionDialog({ accounts, onClose }: { accounts: { id: string; n
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["transactions"] });
+      qc.invalidateQueries({ queryKey: ["accounts"] });
+      qc.invalidateQueries({ queryKey: ["insights"] });
       toast.success("Transaction added");
       onClose();
       setAmount(""); setMerchant(""); setNotes(""); setCustomCategory("");
@@ -631,6 +639,8 @@ function EditTransactionDialog({
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["transactions"] });
+      qc.invalidateQueries({ queryKey: ["accounts"] });
+      qc.invalidateQueries({ queryKey: ["insights"] });
       toast.success("Transaction updated");
       onClose();
     },
