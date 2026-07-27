@@ -34,14 +34,129 @@ function withTimeout<T>(promise: Promise<T>, ms = 8000): Promise<T> {
   ]);
 }
 
+let activeUid: string | null = null;
+let unsubscribeTxs: (() => void) | null = null;
+let unsubscribeAccounts: (() => void) | null = null;
+
+function setupRealtimeListeners(uid: string) {
+  if (typeof window === "undefined" || activeUid === uid) return;
+  if (unsubscribeTxs) { unsubscribeTxs(); unsubscribeTxs = null; }
+  if (unsubscribeAccounts) { unsubscribeAccounts(); unsubscribeAccounts = null; }
+  
+  activeUid = uid;
+
+  try {
+    const txCol = collection(db, "users", uid, "transactions");
+    unsubscribeTxs = onSnapshot(txCol, (snap) => {
+      if (snap.empty) return;
+      const remote: Transaction[] = snap.docs.map((docSnap) => {
+        const data = docSnap.data();
+        return {
+          id: docSnap.id,
+          merchant: data.merchant || data.description || "Transaction",
+          amount: Number(data.amount),
+          type: data.type,
+          category: data.category,
+          date: data.date,
+          accountId: data.accountId || "",
+          paymentMethod: data.paymentMethod || "UPI",
+          notes: data.notes,
+        };
+      });
+
+      const current = read(uid);
+      const remoteIds = new Set(remote.map((t) => t.id));
+      const combined = [...remote, ...current.transactions.filter((t) => !remoteIds.has(t.id))];
+      const sorted = combined.sort((a, b) => +new Date(b.date) - +new Date(a.date));
+      const computedAccounts = computeAccountBalances(current.accounts, sorted);
+
+      write(uid, { ...current, transactions: sorted, accounts: computedAccounts });
+    }, (err) => {
+      console.error("Real-time transactions snapshot error:", err);
+    });
+
+    const accCol = collection(db, "users", uid, "accounts");
+    unsubscribeAccounts = onSnapshot(accCol, (snap) => {
+      if (snap.empty) return;
+      const remote: Account[] = snap.docs.map((docSnap) => {
+        const data = docSnap.data();
+        const bal = Number(data.balance);
+        const initBal = typeof data.initialBalance === "number" ? Number(data.initialBalance) : bal;
+        return {
+          id: docSnap.id,
+          name: data.name,
+          type: data.type,
+          balance: bal,
+          initialBalance: initBal,
+          mask: data.mask || data.accountNumber,
+        };
+      });
+
+      const current = read(uid);
+      const remoteIds = new Set(remote.map((a) => a.id));
+      const merged = remote.map((r) => {
+        const l = current.accounts.find((a) => a.id === r.id);
+        return { ...r, initialBalance: l?.initialBalance ?? r.initialBalance };
+      }).concat(current.accounts.filter((a) => !remoteIds.has(a.id)));
+
+      const computed = computeAccountBalances(merged, current.transactions);
+      write(uid, { ...current, accounts: computed });
+    }, (err) => {
+      console.error("Real-time accounts snapshot error:", err);
+    });
+  } catch (err) {
+    console.error("setupRealtimeListeners error:", err);
+  }
+}
+
+async function syncGuestDataToFirestore(uid: string, s: Store) {
+  try {
+    await ensureUserDoc(uid);
+    for (const tx of s.transactions) {
+      const docRef = doc(db, "users", uid, "transactions", tx.id);
+      await setDoc(docRef, cleanObjectForFirestore({ ...tx }), { merge: true });
+    }
+    for (const acc of s.accounts) {
+      const docRef = doc(db, "users", uid, "accounts", acc.id);
+      await setDoc(docRef, cleanObjectForFirestore({ ...acc }), { merge: true });
+    }
+  } catch (err) {
+    console.error("syncGuestDataToFirestore error:", err);
+  }
+}
+
 function currentUid(): string | null {
   if (typeof window === "undefined") return null;
-  return auth.currentUser?.uid ?? null;
+  const uid = auth.currentUser?.uid ?? null;
+  if (uid) {
+    setupRealtimeListeners(uid);
+  }
+  return uid;
 }
 
 function read(uid: string | null): Store {
   if (typeof window === "undefined") return EMPTY();
-  const raw = localStorage.getItem(storeKey(uid));
+  const key = storeKey(uid);
+  const raw = localStorage.getItem(key);
+
+  // If user just logged in and has guest data locally, migrate guest data into user store
+  if (uid && !raw) {
+    const guestRaw = localStorage.getItem(storeKey("guest"));
+    if (guestRaw) {
+      try {
+        const guestParsed = JSON.parse(guestRaw) as Partial<Store>;
+        const guestStoreData = { ...EMPTY(), ...guestParsed };
+        if (guestStoreData.transactions.length > 0 || guestStoreData.accounts.length > 0) {
+          localStorage.setItem(key, JSON.stringify(guestStoreData));
+          syncGuestDataToFirestore(uid, guestStoreData);
+          return guestStoreData;
+        }
+      } catch (err) {
+        console.error("Error migrating guest data:", err);
+      }
+    }
+  }
+
   if (!raw) return EMPTY();
   try {
     const parsed = JSON.parse(raw) as Partial<Store>;
