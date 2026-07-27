@@ -62,7 +62,7 @@ const MONTHS: Record<string, number> = {
   jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12,
 };
 
-const AMOUNT_RE = /(?:₹|Rs\.?|INR|\$)?\s*(\(?-?\d{1,3}(?:,\d{2,3})+(?:\.\d{1,2})?\)?|\(?-?\d+\.\d{1,2}\)?)\s*(Dr|Cr|DR|CR)?/g;
+const AMOUNT_RE = /(?:₹|Rs\.?|INR|\$)?\s*(\(?-?\d{1,3}(?:[,\s]\s*\d{2,3})+(?:\.\d{1,2})?\)?|\(?-?\d+\.\d{1,2}\)?)\s*(Dr|Cr|DR|CR)?/g;
 
 type AmountProfile = {
   hasDecimal: boolean;
@@ -313,15 +313,75 @@ export async function extractLines(
   }
 }
 
+/**
+ * Preprocess canvas for better OCR: convert to grayscale and apply
+ * adaptive binarization (threshold) for maximum contrast.
+ */
+function preprocessCanvasForOCR(ctx: CanvasRenderingContext2D, w: number, h: number) {
+  const imageData = ctx.getImageData(0, 0, w, h);
+  const d = imageData.data;
+
+  // Convert to grayscale
+  for (let i = 0; i < d.length; i += 4) {
+    const gray = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+    d[i] = d[i + 1] = d[i + 2] = gray;
+  }
+
+  // Compute Otsu's threshold for adaptive binarization
+  const histogram = new Array(256).fill(0);
+  for (let i = 0; i < d.length; i += 4) histogram[d[i]]++;
+  const totalPixels = w * h;
+  let sum = 0;
+  for (let i = 0; i < 256; i++) sum += i * histogram[i];
+  let sumB = 0, wB = 0, wF = 0, maxVariance = 0, threshold = 128;
+  for (let i = 0; i < 256; i++) {
+    wB += histogram[i];
+    if (wB === 0) continue;
+    wF = totalPixels - wB;
+    if (wF === 0) break;
+    sumB += i * histogram[i];
+    const mB = sumB / wB;
+    const mF = (sum - sumB) / wF;
+    const variance = wB * wF * (mB - mF) * (mB - mF);
+    if (variance > maxVariance) { maxVariance = variance; threshold = i; }
+  }
+
+  // Apply threshold — make text black on white background
+  for (let i = 0; i < d.length; i += 4) {
+    const v = d[i] < threshold ? 0 : 255;
+    d[i] = d[i + 1] = d[i + 2] = v;
+  }
+
+  ctx.putImageData(imageData, 0, 0);
+}
+
+/**
+ * Clean up common OCR misreads in bank statement text.
+ */
+function ocrCleanLine(line: string): string {
+  return line
+    // Fix common OCR digit/letter swaps
+    .replace(/\bl\b/g, "1")         // lone 'l' → '1'
+    .replace(/\bO\b/g, "0")         // lone 'O' → '0'
+    // Fix comma/period confusion in numbers: "5.000.00" → "5,000.00"
+    .replace(/(\d)\.(\d{3})\.(\d{2})\b/g, "$1,$2.$3")
+    // Fix spaces inside numbers: "5, 000" → "5,000", "5 000" → "5,000"
+    .replace(/(\d),\s+(\d{2,3})/g, "$1,$2")
+    .replace(/(\d)\s+(\d{3})(?=\.\d{2}\b)/g, "$1,$2")
+    // Normalize multiple spaces
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export async function ocrExtractLines(
   file: File,
   onProgress?: (status: string, percent: number) => void,
 ): Promise<ExtractionResult> {
   onProgress?.("Loading OCR engine…", 5);
   const { createWorker } = await import('tesseract.js');
-  
+
   const worker = await createWorker('eng');
-  
+
   try {
     onProgress?.("Opening PDF for OCR…", 10);
     const buf = await file.arrayBuffer();
@@ -334,46 +394,114 @@ export async function ocrExtractLines(
     const pageCount = Math.min(doc.numPages, MAX_PAGES);
     const allLines: string[] = [];
     const warnings: string[] = ["Text was extracted using OCR — some values may need manual verification."];
-    
+
     for (let p = 1; p <= pageCount; p++) {
       const pctBase = 10 + ((p - 1) / pageCount) * 80;
       onProgress?.(`OCR: Rendering page ${p}/${pageCount}…`, pctBase);
-      
+
       const page = await doc.getPage(p);
-      const viewport = page.getViewport({ scale: 2.0 });
-      
+      // Render at 3x scale for sharper text
+      const viewport = page.getViewport({ scale: 3.0 });
+
       const canvas = document.createElement('canvas');
       canvas.width = viewport.width;
       canvas.height = viewport.height;
       const ctx = canvas.getContext('2d')!;
-      
+
       await page.render({ canvasContext: ctx, viewport }).promise;
-      
+
+      // Preprocess: grayscale + Otsu binarization for max OCR accuracy
+      preprocessCanvasForOCR(ctx, viewport.width, viewport.height);
+
       const dataUrl = canvas.toDataURL('image/png');
-      
+
       onProgress?.(`OCR: Reading page ${p}/${pageCount}…`, pctBase + (40 / pageCount));
-      
-      const { data: { text } } = await worker.recognize(dataUrl);
-      
-      const pageLines = text.split('\n').map((l: string) => l.trim()).filter(Boolean);
-      console.log(`[bank-parser OCR] Page ${p}: ${pageLines.length} lines recognized`);
+
+      const { data } = await worker.recognize(dataUrl);
+
+      // Use word-level bounding boxes to reconstruct table rows by Y-coordinate
+      // (similar to PDF.js token extraction), preserving column alignment
+      type Tok = { x: number; y: number; w: number; str: string };
+      const tokens: Tok[] = [];
+
+      if (data.words && data.words.length > 0) {
+        for (const word of data.words) {
+          const text = (word as any).text ?? "";
+          if (!text.trim()) continue;
+          const bbox = (word as any).bbox ?? { x0: 0, y0: 0, x1: 0, y1: 0 };
+          tokens.push({
+            x: bbox.x0,
+            y: bbox.y0,
+            w: bbox.x1 - bbox.x0,
+            str: text.trim(),
+          });
+        }
+      }
+
+      let pageLines: string[];
+
+      if (tokens.length > 0) {
+        // Sort by Y (top to bottom) then X (left to right)
+        tokens.sort((a, b) => a.y - b.y || a.x - b.x);
+
+        // Group tokens into rows by Y-coordinate proximity
+        const ROW_TOL = viewport.height * 0.008; // ~0.8% of page height tolerance
+        const rows: Tok[][] = [];
+        let currentY = tokens[0].y;
+        let currentRow: Tok[] = [];
+
+        for (const tok of tokens) {
+          if (Math.abs(tok.y - currentY) > ROW_TOL) {
+            if (currentRow.length) rows.push(currentRow);
+            currentRow = [tok];
+            currentY = tok.y;
+          } else {
+            currentRow.push(tok);
+          }
+        }
+        if (currentRow.length) rows.push(currentRow);
+
+        // Build lines from rows, inserting tab-like spacing for column separation
+        pageLines = rows.map((row) => {
+          row.sort((a, b) => a.x - b.x);
+          // Insert extra spaces between tokens that have large X-gaps (column separators)
+          let line = row[0].str;
+          for (let i = 1; i < row.length; i++) {
+            const gap = row[i].x - (row[i - 1].x + row[i - 1].w);
+            const avgCharW = row[i - 1].w / Math.max(1, row[i - 1].str.length);
+            if (gap > avgCharW * 3) {
+              line += "  " + row[i].str; // large gap = column separator
+            } else {
+              line += " " + row[i].str;
+            }
+          }
+          return ocrCleanLine(line);
+        }).filter(Boolean);
+      } else {
+        // Fallback to line-level text if no word bounding boxes
+        pageLines = (data.text || "").split('\n').map((l: string) => ocrCleanLine(l)).filter(Boolean);
+      }
+
+      console.log(`[bank-parser OCR] Page ${p}: ${tokens.length} words → ${pageLines.length} lines`);
+      if (pageLines.length > 0) {
+        console.log(`[bank-parser OCR] Page ${p} first 5 lines:`, pageLines.slice(0, 5));
+      }
       allLines.push(...pageLines);
-      
+
       try { page.cleanup(); } catch { /* ignore */ }
-      // Remove canvas from memory
       canvas.width = 0;
       canvas.height = 0;
     }
-    
+
     console.log(`[bank-parser OCR] Total OCR lines: ${allLines.length}`);
     if (allLines.length > 0) {
-      console.log('[bank-parser OCR] First 10 lines:', allLines.slice(0, 10));
+      console.log('[bank-parser OCR] First 15 lines:', allLines.slice(0, 15));
     }
-    
+
     try { await (doc as any)?.destroy?.(); } catch { /* ignore */ }
-    
+
     onProgress?.("OCR complete!", 95);
-    
+
     return {
       lines: allLines,
       pages: pageCount,
