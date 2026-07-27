@@ -73,7 +73,7 @@ function RemindersPage() {
                 <Input value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} placeholder="Broadband bill" /></div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="grid gap-2"><Label>Amount (₹)</Label>
-                  <Input type="number" value={draft.amount} onChange={(e) => setDraft({ ...draft, amount: Number(e.target.value) })} /></div>
+                  <Input type="number" step="any" value={draft.amount} onChange={(e) => setDraft({ ...draft, amount: Number(e.target.value) })} /></div>
                 <div className="grid gap-2"><Label>Due date</Label>
                   <Input type="date" value={draft.dueDate.slice(0, 10)} onChange={(e) => setDraft({ ...draft, dueDate: new Date(e.target.value).toISOString() })} /></div>
               </div>

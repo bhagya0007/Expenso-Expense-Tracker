@@ -514,7 +514,7 @@ function AddTransactionDialog({ accounts, onClose }: { accounts: { id: string; n
 
         <div className="grid gap-2">
           <Label>Amount (₹)</Label>
-          <Input type="number" placeholder="0" value={amount} onChange={(e) => setAmount(e.target.value)} />
+          <Input type="number" step="any" placeholder="0" value={amount} onChange={(e) => setAmount(e.target.value)} />
         </div>
         <div className="grid gap-2">
           <Label>Date & time</Label>
@@ -650,7 +650,7 @@ function EditTransactionDialog({
 
         <div className="grid gap-2">
           <Label>Amount (₹)</Label>
-          <Input type="number" placeholder="0" value={amount} onChange={(e) => setAmount(e.target.value)} />
+          <Input type="number" step="any" placeholder="0" value={amount} onChange={(e) => setAmount(e.target.value)} />
         </div>
         <div className="grid gap-2">
           <Label>Merchant Name</Label>

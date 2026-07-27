@@ -27,9 +27,31 @@ const groupINR = (digits: string) => {
 
 const formatFromNumber = (v: number) => {
   if (!v || Number.isNaN(v)) return "";
-  const abs = Math.abs(Math.trunc(v));
-  const s = groupINR(String(abs));
-  return v < 0 ? `-${s}` : s;
+  const parts = String(v).split(".");
+  const abs = Math.abs(Math.trunc(Number(parts[0])));
+  const grouped = groupINR(String(abs));
+  const dec = parts[1] !== undefined ? "." + parts[1] : "";
+  return (v < 0 ? "-" : "") + grouped + dec;
+};
+
+const parseFormattedString = (raw: string, allowNegative: boolean): { n: number; formatted: string } => {
+  const trimmed = raw.trim();
+  const negative = allowNegative && trimmed.startsWith("-");
+  const clean = trimmed.replace(negative ? /^-/ : "", "");
+
+  const parts = clean.split(".");
+  const intDigits = parts[0].replace(/\D/g, "");
+  const hasDecimal = parts.length > 1;
+  const decDigits = hasDecimal ? parts.slice(1).join("").replace(/\D/g, "").slice(0, 2) : "";
+
+  const formattedInt = groupINR(intDigits);
+  const formattedDec = hasDecimal ? "." + decDigits : "";
+  const formatted = (negative && (intDigits || hasDecimal) ? "-" : "") + formattedInt + formattedDec;
+
+  const numStr = (negative ? "-" : "") + (intDigits || "0") + (hasDecimal ? "." + decDigits : "");
+  const n = Number(numStr) || 0;
+
+  return { n, formatted };
 };
 
 function CurrencyInputBase({
@@ -50,9 +72,7 @@ function CurrencyInputBase({
   }, [min, max]);
 
   const commit = useCallback((raw: string) => {
-    const negative = allowNegative && raw.trim().startsWith("-");
-    const digits = raw.replace(/\D/g, "");
-    const n = digits ? Number(digits) * (negative ? -1 : 1) : 0;
+    const { n } = parseFormattedString(raw, allowNegative);
     const clamped = clamp(n);
     onChange(clamped);
     return clamped;
@@ -60,16 +80,14 @@ function CurrencyInputBase({
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const raw = e.target.value;
-    const negative = allowNegative && raw.trim().startsWith("-");
-    const digits = raw.replace(/\D/g, "");
-    const formatted = digits ? (negative ? "-" : "") + groupINR(digits) : (negative ? "-" : "");
+    const { n, formatted } = parseFormattedString(raw, allowNegative);
     setText(formatted);
-    const n = digits ? Number(digits) * (negative ? -1 : 1) : 0;
     onChange(clamp(n));
   };
 
   const bump = (delta: number) => {
-    const next = clamp((value || 0) + delta);
+    const current = value || 0;
+    const next = clamp(Number((current + delta).toFixed(2)));
     onChange(next);
     setText(formatFromNumber(next));
   };
@@ -91,7 +109,7 @@ function CurrencyInputBase({
       <div className="flex items-center pl-2 text-muted-foreground select-none font-numeric text-sm">₹</div>
       <input
         id={id}
-        inputMode="numeric"
+        inputMode="decimal"
         autoComplete="off"
         value={text}
         placeholder={placeholder}
