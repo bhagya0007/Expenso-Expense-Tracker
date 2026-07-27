@@ -9,7 +9,11 @@
 import * as pdfjsLib from "pdfjs-dist";
 import pdfWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker as string;
+if (typeof window !== "undefined") {
+  pdfjsLib.GlobalWorkerOptions.workerSrc =
+    (pdfWorker as string) ||
+    "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.worker.min.mjs";
+}
 
 export interface ParsedTxn {
   id: string;
@@ -217,9 +221,15 @@ export async function extractLines(
             const content = await withTimeout(page.getTextContent(), PAGE_TIMEOUT_MS, `Reading page ${p}`);
             type Tok = { x: number; y: number; str: string };
             const tokens: Tok[] = [];
-            for (const item of content.items as Array<{ str: string; transform: number[] }>) {
-              if (!item.str.trim()) continue;
-              tokens.push({ x: item.transform[4], y: item.transform[5], str: item.str });
+            for (const item of content.items as any[]) {
+              if (item && typeof item.str === "string" && item.str.trim()) {
+                const transform = Array.isArray(item.transform) ? item.transform : [1, 0, 0, 1, 0, 0];
+                tokens.push({
+                  x: typeof transform[4] === "number" ? transform[4] : 0,
+                  y: typeof transform[5] === "number" ? transform[5] : 0,
+                  str: item.str,
+                });
+              }
             }
             tokens.sort((a, b) => b.y - a.y || a.x - b.x);
 
