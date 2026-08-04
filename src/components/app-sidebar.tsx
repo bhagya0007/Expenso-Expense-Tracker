@@ -38,28 +38,14 @@ export function AppSidebar({ name, email, initials, onSignOut }: Props) {
 
   return (
     <Sidebar collapsible="icon" className="border-r border-sidebar-border">
-      <SidebarHeader className="px-3 py-4">
+      <SidebarHeader className="px-3 py-3.5">
         <Link to="/" className="flex items-center gap-3 group">
-          <div className="relative grid h-11 w-11 shrink-0 place-items-center rounded-2xl shadow-elegant ring-1 ring-black/10 overflow-hidden gradient-primary transition-transform group-hover:scale-[1.04]">
-            <svg viewBox="0 0 44 44" className="h-11 w-11" aria-hidden="true">
-              <defs>
-                <linearGradient id="expenso-shine" x1="0" y1="0" x2="1" y2="1">
-                  <stop offset="0%" stopColor="rgba(255,255,255,0.35)" />
-                  <stop offset="100%" stopColor="rgba(255,255,255,0)" />
-                </linearGradient>
-              </defs>
-              <rect x="0" y="0" width="44" height="44" fill="url(#expenso-shine)" />
-              {/* mini bar chart */}
-              <rect x="9"  y="26" width="3" height="8"  rx="1.2" fill="rgba(255,255,255,0.55)" />
-              <rect x="14" y="22" width="3" height="12" rx="1.2" fill="rgba(255,255,255,0.7)" />
-              <rect x="19" y="18" width="3" height="16" rx="1.2" fill="rgba(255,255,255,0.85)" />
-              {/* rupee glyph */}
-              <text x="27" y="30" fontFamily="Space Grotesk, sans-serif" fontWeight="700" fontSize="20" fill="#ffffff">₹</text>
-            </svg>
+          <div className="relative grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-transparent transition-transform group-hover:scale-[1.05]">
+            <img src="/logo-icon.png" alt="Expenso" className="h-full w-full object-contain scale-[1.75]" />
           </div>
           {!collapsed && (
             <div className="min-w-0">
-              <div className="font-display text-[1.35rem] font-semibold leading-none tracking-[-0.03em] text-foreground">
+              <div className="font-display text-[1.45rem] font-bold leading-none tracking-[-0.03em] text-foreground">
                 Expenso
               </div>
               <div className="mt-1.5 text-[10px] font-medium uppercase tracking-[0.22em] text-muted-foreground">
