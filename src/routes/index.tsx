@@ -63,14 +63,24 @@ function Dashboard() {
   const { data: insights } = useSuspenseQuery(inQO);
 
   const [trendMode, setTrendMode] = useState<"30d" | "month">("30d");
+  const [trendType, setTrendType] = useState<"expense" | "income" | "all">("expense");
   const [monthOffset, setMonthOffset] = useState(0); // 0 = current month, -1 = prev, +1 = next
 
+  const getTxDateKey = (dateStr: string) => {
+    if (!dateStr) return "";
+    const dt = new Date(dateStr);
+    if (isNaN(+dt)) return dateStr.slice(0, 10);
+    const y = dt.getFullYear();
+    const m = String(dt.getMonth() + 1).padStart(2, "0");
+    const d = String(dt.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  };
+
   const now = new Date();
-  const thisMonth = txs.filter((t) =>
-    new Date(t.date).getMonth() === now.getMonth() && new Date(t.date).getFullYear() === now.getFullYear(),
-  );
-  const income = thisMonth.filter((t) => t.type === "income").reduce((s, t) => s + t.amount, 0);
-  const expenses = thisMonth.filter((t) => t.type === "expense").reduce((s, t) => s + t.amount, 0);
+  const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const thisMonth = txs.filter((t) => getTxDateKey(t.date).startsWith(currentMonthKey));
+  const income = thisMonth.filter((t) => t.type?.toLowerCase() === "income").reduce((s, t) => s + t.amount, 0);
+  const expenses = thisMonth.filter((t) => t.type?.toLowerCase() === "expense").reduce((s, t) => s + t.amount, 0);
   const savings = income - expenses;
   const savingsRate = income > 0 ? Math.round((savings / income) * 100) : 0;
 
@@ -87,29 +97,40 @@ function Dashboard() {
 
   // Spending trend — either last 30 days, or day-by-day for viewed month.
   const trend = useMemo(() => {
+    const filterTx = (t: (typeof txs)[0], key: string) => {
+      if (getTxDateKey(t.date) !== key) return false;
+      const tType = (t.type || "expense").toLowerCase();
+      if (trendType === "expense") return tType === "expense";
+      if (trendType === "income") return tType === "income";
+      return true;
+    };
+
     if (trendMode === "month") {
       const y = viewedMonth.getFullYear();
       const m = viewedMonth.getMonth();
       const daysIn = new Date(y, m + 1, 0).getDate();
       return Array.from({ length: daysIn }).map((_, i) => {
-        const d = new Date(y, m, i + 1);
-        const key = d.toISOString().slice(0, 10);
+        const dayNum = i + 1;
+        const key = `${y}-${String(m + 1).padStart(2, "0")}-${String(dayNum).padStart(2, "0")}`;
         const total = txs
-          .filter((t) => t.type === "expense" && t.date.slice(0, 10) === key)
+          .filter((t) => filterTx(t, key))
           .reduce((s, t) => s + t.amount, 0);
-        return { day: d.toLocaleDateString("en-IN", { day: "numeric" }), amount: total };
+        return { day: String(dayNum), amount: total };
       });
     }
     return Array.from({ length: 30 }).map((_, i) => {
-      const d = new Date(); d.setDate(d.getDate() - (29 - i));
-      const key = d.toISOString().slice(0, 10);
+      const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - (29 - i));
+      const y = d.getFullYear();
+      const m = d.getMonth() + 1;
+      const dayNum = d.getDate();
+      const key = `${y}-${String(m).padStart(2, "0")}-${String(dayNum).padStart(2, "0")}`;
       const total = txs
-        .filter((t) => t.type === "expense" && t.date.slice(0, 10) === key)
+        .filter((t) => filterTx(t, key))
         .reduce((s, t) => s + t.amount, 0);
       return { day: d.toLocaleDateString("en-IN", { day: "numeric", month: "short" }), amount: total };
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [txs, trendMode, viewedMonth]);
+  }, [txs, trendMode, trendType, viewedMonth]);
 
   // Category breakdown (this month)
   const catMap = new Map<string, number>();
@@ -254,6 +275,26 @@ function Dashboard() {
                   </Button>
                 </div>
               )}
+              <div className="flex items-center gap-1 rounded-full border border-border/60 bg-background/40 p-0.5">
+                <Button
+                  size="sm"
+                  variant={trendType === "expense" ? "default" : "ghost"}
+                  className={`h-7 rounded-full px-2.5 text-xs ${trendType === "expense" ? "gradient-primary" : ""}`}
+                  onClick={() => setTrendType("expense")}
+                >Expenses</Button>
+                <Button
+                  size="sm"
+                  variant={trendType === "income" ? "default" : "ghost"}
+                  className={`h-7 rounded-full px-2.5 text-xs ${trendType === "income" ? "gradient-primary" : ""}`}
+                  onClick={() => setTrendType("income")}
+                >Income</Button>
+                <Button
+                  size="sm"
+                  variant={trendType === "all" ? "default" : "ghost"}
+                  className={`h-7 rounded-full px-2.5 text-xs ${trendType === "all" ? "gradient-primary" : ""}`}
+                  onClick={() => setTrendType("all")}
+                >All</Button>
+              </div>
               <div className="flex items-center gap-1 rounded-full border border-border/60 bg-background/40 p-0.5">
                 <Button
                   size="sm"

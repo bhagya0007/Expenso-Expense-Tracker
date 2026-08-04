@@ -42,7 +42,7 @@ export const Route = createFileRoute("/transactions")({
   ),
 });
 
-const PAGE_SIZE = 8;
+const PAGE_SIZE = 15;
 type RangeKey = "all" | "7d" | "30d" | "90d" | "ytd";
 
 function TransactionsPage() {
@@ -53,12 +53,28 @@ function TransactionsPage() {
   const [q, setQ] = useState("");
   const [tab, setTab] = useState<"all" | "income" | "expense">("all");
   const [range, setRange] = useState<RangeKey>("all");
+  const [selectedMonth, setSelectedMonth] = useState<string>("all");
   const [sort, setSort] = useState<"desc" | "asc">("desc");
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Transaction | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [page, setPage] = useState(1);
 
+  const availableMonths = useMemo(() => {
+    const map = new Map<string, { label: string; key: string }>();
+    txs.forEach((t) => {
+      const d = new Date(t.date);
+      if (isNaN(+d)) return;
+      const y = d.getUTCFullYear();
+      const m = d.getUTCMonth();
+      const key = `${y}-${String(m + 1).padStart(2, "0")}`;
+      const label = d.toLocaleDateString("en-IN", { month: "long", year: "numeric" });
+      if (!map.has(key)) {
+        map.set(key, { label, key });
+      }
+    });
+    return Array.from(map.values()).sort((a, b) => b.key.localeCompare(a.key));
+  }, [txs]);
 
   const filtered = useMemo(() => {
     const now = Date.now();
@@ -72,6 +88,11 @@ function TransactionsPage() {
     const c = cutoff[range];
     const rows = txs.filter((t) => {
       if (tab !== "all" && t.type !== tab) return false;
+      if (selectedMonth !== "all") {
+        const d = new Date(t.date);
+        const mKey = isNaN(+d) ? "" : `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+        if (mKey !== selectedMonth) return false;
+      }
       if (c && +new Date(t.date) < c) return false;
       if (!q) return true;
       const s = q.toLowerCase();
@@ -87,7 +108,7 @@ function TransactionsPage() {
       return sort === "asc" ? da - db : db - da;
     });
     return rows;
-  }, [txs, q, tab, range, sort]);
+  }, [txs, q, tab, range, selectedMonth, sort]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
@@ -251,9 +272,23 @@ function TransactionsPage() {
               />
             </div>
 
-            <Select value={range} onValueChange={(v) => { setRange(v as RangeKey); setPage(1); }}>
-              <SelectTrigger className="h-10 w-full md:w-[160px] rounded-xl border-border/60 bg-background/40">
+            <Select value={selectedMonth} onValueChange={(v) => { setSelectedMonth(v); setPage(1); }}>
+              <SelectTrigger className="h-10 w-full md:w-[170px] rounded-xl border-border/60 bg-background/40">
                 <CalendarDays className="h-4 w-4 opacity-70" />
+                <SelectValue placeholder="All Months" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Months</SelectItem>
+                {availableMonths.map((m) => (
+                  <SelectItem key={m.key} value={m.key}>
+                    {m.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select value={range} onValueChange={(v) => { setRange(v as RangeKey); setPage(1); }}>
+              <SelectTrigger className="h-10 w-full md:w-[150px] rounded-xl border-border/60 bg-background/40">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -322,9 +357,9 @@ function TransactionsPage() {
               No transactions match your filters.
             </div>
           ) : (
-            <div className="max-h-[640px] overflow-auto scroll-smooth">
+            <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="sticky top-0 z-10 bg-background/80 backdrop-blur-xl">
+                <thead className="bg-background/80 backdrop-blur-xl">
                   <tr className="border-b border-border/60 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
                     <th className="px-4 py-3 w-10">
                       <Checkbox checked={allChecked} onCheckedChange={(v) => toggleAllOnPage(!!v)} />
@@ -414,15 +449,22 @@ function TransactionsPage() {
             <div className="flex flex-col items-center justify-between gap-3 border-t border-border/60 bg-background/40 px-4 py-3 md:flex-row">
               <div className="text-xs text-muted-foreground">
                 {selected.size > 0 ? `${selected.size} selected · ` : ""}
-                Page {currentPage} of {totalPages} · {filtered.length} rows
+                Showing {Math.min(filtered.length, (currentPage - 1) * PAGE_SIZE + 1)}–{Math.min(filtered.length, currentPage * PAGE_SIZE)} of {filtered.length} transactions
               </div>
               <div className="flex items-center gap-1">
                 <PagerBtn onClick={() => setPage(1)} disabled={currentPage === 1}><ChevronsLeft className="h-4 w-4" /></PagerBtn>
                 <PagerBtn onClick={() => setPage(currentPage - 1)} disabled={currentPage === 1}><ChevronLeft className="h-4 w-4" /></PagerBtn>
-                {Array.from({ length: totalPages }, (_, i) => i + 1).slice(0, 5).map((p) => (
+                {(() => {
+                  const delta = 2;
+                  const start = Math.max(1, currentPage - delta);
+                  const end = Math.min(totalPages, currentPage + delta);
+                  const pages = [];
+                  for (let i = start; i <= end; i++) pages.push(i);
+                  return pages;
+                })().map((p) => (
                   <button
                     key={p} onClick={() => setPage(p)}
-                    className={`h-8 min-w-8 rounded-lg px-2 text-xs font-medium transition-colors ${p === currentPage ? "gradient-primary text-primary-foreground shadow-glow" : "text-muted-foreground hover:bg-muted"}`}
+                    className={`h-8 min-w-8 rounded-lg px-2.5 text-xs font-medium transition-colors ${p === currentPage ? "gradient-primary text-primary-foreground shadow-glow" : "text-muted-foreground hover:bg-muted"}`}
                   >
                     {p}
                   </button>

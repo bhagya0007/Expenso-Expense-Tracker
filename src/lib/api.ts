@@ -2,7 +2,7 @@
  * API layer — Instant Optimistic Store + Async Firebase Cloud Firestore Sync.
  */
 import { auth, db } from "@/integrations/firebase/client";
-import { collection, doc, getDocs, setDoc, deleteDoc, updateDoc } from "firebase/firestore";
+import { collection, doc, getDocs, setDoc, deleteDoc, updateDoc, onSnapshot } from "firebase/firestore";
 import type { Account, Budget, Insight, Reminder, Transaction } from "./types";
 
 type Store = {
