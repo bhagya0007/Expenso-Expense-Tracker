@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useSuspenseQuery, queryOptions } from "@tanstack/react-query";
+import { useSuspenseQuery, queryOptions, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { inr, compact } from "@/lib/format";
 import { Card } from "@/components/ui/card";
@@ -13,7 +13,7 @@ import {
   Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis,
   Cell, Pie, PieChart as RPieChart,
 } from "recharts";
-import { Suspense, useMemo, useState } from "react";
+import { Suspense, useMemo, useState, useEffect } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 
@@ -57,6 +57,7 @@ function DashboardSkeleton() {
 }
 
 function Dashboard() {
+  const queryClient = useQueryClient();
   const { data: txs } = useSuspenseQuery(txQO);
   const { data: accounts } = useSuspenseQuery(acQO);
   const { data: budgets } = useSuspenseQuery(bdQO);
@@ -64,7 +65,22 @@ function Dashboard() {
 
   const [trendMode, setTrendMode] = useState<"30d" | "month">("30d");
   const [trendType, setTrendType] = useState<"expense" | "income" | "all">("expense");
-  const [monthOffset, setMonthOffset] = useState(0); // 0 = current month, -1 = prev, +1 = next
+  const [monthOffset, setMonthOffset] = useState(0);
+
+  // Listen to bank statement import events and refresh dashboard data
+  useEffect(() => {
+    const handleTransactionsUpdated = () => {
+      queryClient.invalidateQueries({ queryKey: ["transactions"] });
+      queryClient.invalidateQueries({ queryKey: ["accounts"] });
+      queryClient.invalidateQueries({ queryKey: ["budgets"] });
+      queryClient.invalidateQueries({ queryKey: ["insights"] });
+    };
+
+    window.addEventListener("expenso:transactions-updated", handleTransactionsUpdated);
+    return () => {
+      window.removeEventListener("expenso:transactions-updated", handleTransactionsUpdated);
+    };
+  }, [queryClient]);
 
   const getTxDateKey = (dateStr: string) => {
     if (!dateStr) return "";
@@ -84,8 +100,6 @@ function Dashboard() {
   const savings = income - expenses;
   const savingsRate = income > 0 ? Math.round((savings / income) * 100) : 0;
 
-  // Total balance = sum of account balances. Fallback to net cashflow from all
-  // transactions when the user hasn't added any accounts yet, so it isn't ₹0.
   const accountsBalance = accounts.reduce((s, a) => s + a.balance, 0);
   const netCashflow = txs.reduce((s, t) => s + (t.type === "income" ? t.amount : -t.amount), 0);
   const balance = accounts.length > 0 ? accountsBalance : netCashflow;
@@ -95,7 +109,6 @@ function Dashboard() {
     return d;
   }, [monthOffset, now]);
 
-  // Spending trend — either last 30 days, or day-by-day for viewed month.
   const trend = useMemo(() => {
     const filterTx = (t: (typeof txs)[0], key: string) => {
       if (getTxDateKey(t.date) !== key) return false;
@@ -129,10 +142,8 @@ function Dashboard() {
         .reduce((s, t) => s + t.amount, 0);
       return { day: d.toLocaleDateString("en-IN", { day: "numeric", month: "short" }), amount: total };
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [txs, trendMode, trendType, viewedMonth]);
+  }, [txs, trendMode, trendType, viewedMonth, now]);
 
-  // Category breakdown (this month)
   const catMap = new Map<string, number>();
   thisMonth.filter((t) => t.type === "expense").forEach((t) => {
     catMap.set(t.category, (catMap.get(t.category) ?? 0) + t.amount);

@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: expenso-parser-api
+    env: docker
+    dockerfilePath: Dockerfile
+    plan: free
+    region: singapore
+    autoDeploy: true
+    envVars:
+      - key: APP_NAME
+        value: "Expenso Parser API"
+      - key: APP_ENV
+        value: "production"
+      - key: DEBUG
+        value: "false"
+      - key: PORT
+        value: "8000"
+      - key: CORS_ORIGINS
+        value: "https://*.vercel.app,http://localhost:8080"
