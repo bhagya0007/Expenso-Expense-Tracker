@@ -15,11 +15,11 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Suspense, useMemo, useState } from "react";
+import { Suspense, useMemo, useState, Fragment } from "react";
 import {
   ArrowDownRight, ArrowUpRight, Plus, Search, Trash2, Download,
   ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, CalendarDays,
-  ArrowDownWideNarrow, ArrowUpWideNarrow, Pencil,
+  ArrowDownWideNarrow, ArrowUpWideNarrow, Pencil, Clock,
 } from "lucide-react";
 
 import { toast } from "sonner";
@@ -199,23 +199,23 @@ function TransactionsPage() {
   const allChecked = pageRows.length > 0 && pageRows.every((r) => selected.has(r.id));
 
   return (
-    <div className="space-y-6 p-4 md:p-6">
+    <div className="space-y-4 p-4 sm:p-5 max-w-7xl mx-auto">
       {/* Header */}
       <motion.div
         initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }}
-        className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 sm:flex sm:flex-wrap sm:justify-between"
+        className="flex flex-col sm:flex-row sm:items-center justify-between gap-3"
       >
         <div className="min-w-0">
-          <h1 className="truncate font-display text-2xl font-bold tracking-tight md:text-3xl">Transactions</h1>
-          <p className="text-sm text-muted-foreground">
-            {filtered.length} of {txs.length} · every rupee, in one place
+          <h1 className="truncate text-xl sm:text-2xl font-extrabold font-display tracking-tight text-foreground">Transactions</h1>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            {filtered.length} of {txs.length} transactions · every rupee, in one place
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           {txs.length > 0 && (
             <Button
               variant="outline"
-              className="rounded-xl border-destructive/30 text-destructive hover:bg-destructive/10"
+              className="h-8 rounded-xl px-3 text-xs font-semibold border-destructive/30 text-destructive hover:bg-destructive/10"
               disabled={deleteAllMut.isPending}
               onClick={() => {
                 if (confirm(`Are you sure you want to delete ALL ${txs.length} transactions? This action cannot be undone.`)) {
@@ -223,16 +223,16 @@ function TransactionsPage() {
                 }
               }}
             >
-              <Trash2 className="h-4 w-4" /> Delete all
+              <Trash2 className="h-3.5 w-3.5 mr-1" /> Delete all
             </Button>
           )}
-          <Button variant="outline" onClick={exportCSV} className="rounded-xl">
-            <Download className="h-4 w-4" /> Export
+          <Button variant="outline" onClick={exportCSV} className="h-8 rounded-xl px-3 text-xs font-semibold bg-background/50 border-border/60 hover:bg-muted text-foreground">
+            <Download className="h-3.5 w-3.5 mr-1" /> Export
           </Button>
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
-              <Button className="gradient-primary text-primary-foreground shadow-glow rounded-xl">
-                <Plus className="h-4 w-4" /> Add
+              <Button className="h-8 rounded-xl px-4 text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm">
+                <Plus className="h-3.5 w-3.5 mr-1" /> Add
               </Button>
             </DialogTrigger>
             <AddTransactionDialog accounts={accounts} onClose={() => setOpen(false)} />
@@ -246,7 +246,6 @@ function TransactionsPage() {
               />
             )}
           </Dialog>
-
         </div>
       </motion.div>
 
@@ -264,7 +263,7 @@ function TransactionsPage() {
       <motion.div
         initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.1 }}
       >
-        <Card className="border-border/60 gradient-card p-3 shadow-card md:p-4">
+        <Card className="border border-border/60 bg-card/80 dark:bg-slate-900/80 backdrop-blur-md p-4 rounded-2xl shadow-sm">
           <div className="flex flex-col gap-3 md:flex-row md:items-center">
             <Tabs value={tab} onValueChange={(v) => { setTab(v as typeof tab); setPage(1); }}>
               <TabsList className="bg-background/40">
@@ -330,20 +329,20 @@ function TransactionsPage() {
       <motion.div
         initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.15 }}
       >
-        <Card className="overflow-hidden border-border/60 gradient-card p-0 shadow-card">
+        <Card className="overflow-hidden border border-border/60 bg-card/80 dark:bg-slate-900/80 backdrop-blur-md p-0 rounded-2xl shadow-sm">
           {selected.size > 0 && (
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/60 bg-muted/30 px-4 py-2.5">
               <div className="text-sm">
                 <span className="font-semibold">{selected.size}</span>{" "}
                 <span className="text-muted-foreground">selected</span>
                 {selected.size < filtered.length && (
-                  <Button variant="link" size="sm" className="h-auto px-2 py-0" onClick={selectAllFiltered}>
+                  <Button variant="link" size="sm" className="h-auto px-2 py-0 text-xs text-indigo-500" onClick={selectAllFiltered}>
                     Select all {filtered.length}
                   </Button>
                 )}
               </div>
               <div className="flex gap-2">
-                <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>
+                <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())} className="h-7 text-xs rounded-lg">
                   Clear
                 </Button>
                 <Button
@@ -355,9 +354,9 @@ function TransactionsPage() {
                       bulkDel.mutate(Array.from(selected));
                     }
                   }}
+                  className="h-7 text-xs rounded-lg"
                 >
-                  <Trash2 className="h-4 w-4" />
-                  Delete selected
+                  <Trash2 className="h-3.5 w-3.5 mr-1" /> Delete selected
                 </Button>
               </div>
             </div>
@@ -386,71 +385,104 @@ function TransactionsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {pageRows.map((t) => (
-                      <tr
-                        key={t.id}
-                        className="group border-b border-border/40 transition-colors hover:bg-muted/30"
-                      >
+                  {(() => {
+                    let lastDateKey = "";
+                    return pageRows.map((t) => {
+                      const d = new Date(t.date);
+                      const isValidDate = !isNaN(+d);
+                      const dateKey = isValidDate ? d.toISOString().slice(0, 10) : "invalid";
+                      const dateStr = isValidDate ? d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—";
+                      const dayStr = isValidDate ? d.toLocaleDateString("en-IN", { weekday: "long" }) : "";
+                      const timeStr = isValidDate ? d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true }) : "";
 
-                        <td className="px-4 py-3">
-                          <Checkbox
-                            checked={selected.has(t.id)}
-                            onCheckedChange={(v) => {
-                              const next = new Set(selected);
-                              v ? next.add(t.id) : next.delete(t.id);
-                              setSelected(next);
-                            }}
-                          />
-                        </td>
-                        <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">
-                          <div className="font-medium text-foreground">{new Date(t.date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}</div>
-                          <div className="text-[11px] text-muted-foreground/80 font-normal">{new Date(t.date).toLocaleDateString("en-IN", { weekday: "long" })}</div>
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="font-semibold">{t.merchant || t.category || "Transaction"}</div>
-                          <div className="mt-0.5 text-xs text-muted-foreground">{t.category}</div>
-                        </td>
-                        <td className="hidden px-4 py-3 md:table-cell">
-                          <TypePill type={t.type} />
-                        </td>
-                        <td className="hidden px-4 py-3 text-muted-foreground md:table-cell">{t.paymentMethod}</td>
-                        <td className="hidden px-4 py-3 font-mono text-xs text-muted-foreground sm:table-cell">
-                          {t.notes ? (
-                            <span className="inline-flex items-center rounded-md bg-muted/60 px-2 py-0.5 font-medium text-foreground/90">
-                              {t.notes}
-                            </span>
-                          ) : (
-                            <span className="text-muted-foreground/30">—</span>
+                      const isNewDateGroup = dateKey !== lastDateKey;
+                      lastDateKey = dateKey;
+                      const dateTxCount = pageRows.filter((r) => {
+                        const rd = new Date(r.date);
+                        return !isNaN(+rd) && rd.toISOString().slice(0, 10) === dateKey;
+                      }).length;
+
+                      return (
+                        <Fragment key={t.id}>
+                          {isNewDateGroup && (
+                            <tr className="bg-slate-100/60 dark:bg-slate-900/60 border-y border-border/50">
+                              <td colSpan={9} className="px-4 py-1.5 text-[11px] font-bold text-muted-foreground uppercase tracking-wider">
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-2">
+                                    <CalendarDays className="h-3.5 w-3.5 text-muted-foreground/70 shrink-0" />
+                                    <span className="font-extrabold text-foreground">{dateStr}</span>
+                                    <span className="text-muted-foreground/80 font-normal lowercase">• {dayStr}</span>
+                                  </div>
+                                  <span className="text-[10px] font-semibold text-muted-foreground/70 normal-case">
+                                    {dateTxCount} {dateTxCount === 1 ? "transaction" : "transactions"}
+                                  </span>
+                                </div>
+                              </td>
+                            </tr>
                           )}
-                        </td>
-                        <td className={`whitespace-nowrap px-4 py-3 text-right font-semibold tabular-nums ${t.type === "income" ? "text-success" : ""}`}>
-                          {t.type === "income" ? "+" : "−"}{inr(t.amount)}
-                        </td>
-                        <td className="hidden px-4 py-3 text-xs text-muted-foreground lg:table-cell">
-                          {accounts.find((a) => a.id === t.accountId)?.name ?? "—"}
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          <div className="flex justify-end gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-                            <Button
-                              size="icon" variant="ghost"
-                              className="rounded-xl text-muted-foreground hover:text-primary"
-                              onClick={() => setEditing(t)}
-                            >
-                              <Pencil className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              size="icon" variant="ghost"
-                              className="rounded-xl text-muted-foreground hover:text-destructive"
-                              onClick={() => del.mutate(t.id)}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </td>
-
-                      </tr>
-                    ))}
-
+                          <tr className="group border-b border-border/40 transition-colors hover:bg-muted/30">
+                            <td className="px-4 py-3">
+                              <Checkbox
+                                checked={selected.has(t.id)}
+                                onCheckedChange={(v) => {
+                                  const next = new Set(selected);
+                                  v ? next.add(t.id) : next.delete(t.id);
+                                  setSelected(next);
+                                }}
+                              />
+                            </td>
+                            <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">
+                              <div className="font-semibold text-foreground text-xs">{dateStr}</div>
+                              <div className="text-[11px] text-muted-foreground/80 font-normal mt-0.5">
+                                {dayStr}{timeStr ? ` • ${timeStr}` : ""}
+                              </div>
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="font-semibold">{t.merchant || t.category || "Transaction"}</div>
+                              <div className="mt-0.5 text-xs text-muted-foreground">{t.category}</div>
+                            </td>
+                            <td className="hidden px-4 py-3 md:table-cell">
+                              <TypePill type={t.type} />
+                            </td>
+                            <td className="hidden px-4 py-3 text-muted-foreground md:table-cell">{t.paymentMethod}</td>
+                            <td className="hidden px-4 py-3 font-mono text-xs text-muted-foreground sm:table-cell">
+                              {t.notes ? (
+                                <span className="inline-flex items-center rounded-md bg-muted/60 px-2 py-0.5 font-medium text-foreground/90">
+                                  {t.notes}
+                                </span>
+                              ) : (
+                                <span className="text-muted-foreground/30">—</span>
+                              )}
+                            </td>
+                            <td className={`whitespace-nowrap px-4 py-3 text-right font-semibold tabular-nums ${t.type === "income" ? "text-success" : ""}`}>
+                              {t.type === "income" ? "+" : "−"}{inr(t.amount)}
+                            </td>
+                            <td className="hidden px-4 py-3 text-xs text-muted-foreground lg:table-cell">
+                              {accounts.find((a) => a.id === t.accountId)?.name ?? "—"}
+                            </td>
+                            <td className="px-4 py-3 text-right">
+                              <div className="flex justify-end gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                                <Button
+                                  size="icon" variant="ghost"
+                                  className="rounded-xl text-muted-foreground hover:text-primary"
+                                  onClick={() => setEditing(t)}
+                                >
+                                  <Pencil className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  size="icon" variant="ghost"
+                                  className="rounded-xl text-muted-foreground hover:text-destructive"
+                                  onClick={() => del.mutate(t.id)}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </td>
+                          </tr>
+                        </Fragment>
+                      );
+                    });
+                  })()}
                 </tbody>
               </table>
             </div>
@@ -495,23 +527,24 @@ function TransactionsPage() {
 function MiniCard({
   label, value, tone, icon: Icon,
 }: { label: string; value: string; tone: "success" | "destructive"; icon: React.ComponentType<{ className?: string }> }) {
-  const t = tone === "success" ? "bg-success/15 text-success" : "bg-destructive/15 text-destructive";
+  const t = tone === "success" ? "bg-emerald-500/15 text-emerald-500" : "bg-rose-500/15 text-rose-500";
   return (
-    <Card className="gradient-card flex items-center gap-3 border-border/60 p-4 shadow-card">
-      <div className={`grid h-10 w-10 place-items-center rounded-xl ${t}`}><Icon className="h-4 w-4" /></div>
+    <Card className="border border-border/60 bg-card/80 dark:bg-slate-900/80 backdrop-blur-md flex items-center gap-3.5 p-4 rounded-xl shadow-sm">
+      <div className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl ${t}`}><Icon className="h-5 w-5" /></div>
       <div className="min-w-0">
-        <div className="text-xs uppercase tracking-wider text-muted-foreground">{label}</div>
-        <div className="font-numeric text-xl font-semibold">{value}</div>
+        <div className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">{label}</div>
+        <div className="font-numeric text-xl sm:text-2xl font-extrabold text-foreground">{value}</div>
       </div>
     </Card>
   );
 }
 
 function TypePill({ type }: { type: Transaction["type"] }) {
-  const cls = type === "income"
-    ? "border-success/30 bg-success/10 text-success"
-    : "border-destructive/30 bg-destructive/10 text-destructive";
-  return <Badge variant="outline" className={`rounded-md font-medium capitalize ${cls}`}>{type}</Badge>;
+  const isInc = type === "income";
+  const cls = isInc
+    ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-500 dark:text-emerald-400"
+    : "border-rose-500/20 bg-rose-500/10 text-rose-500 dark:text-rose-400";
+  return <Badge variant="outline" className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold capitalize ${cls}`}>{type}</Badge>;
 }
 
 function PagerBtn({ children, onClick, disabled }: { children: React.ReactNode; onClick: () => void; disabled?: boolean }) {

@@ -76,55 +76,57 @@ function AccountsPage() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6 p-6">
-      <div className="flex items-end justify-between gap-4">
+    <div className="space-y-4 p-4 sm:p-5 max-w-7xl mx-auto">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="font-display text-4xl font-semibold tracking-tight">Accounts</h1>
-          <p className="text-sm text-muted-foreground">Every rupee, gathered in one warm place.</p>
+          <h1 className="text-xl sm:text-2xl font-extrabold font-display tracking-tight text-foreground">Accounts</h1>
+          <p className="text-xs text-muted-foreground mt-0.5">Every rupee, gathered in one place.</p>
         </div>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
-            <Button onClick={openCreate} className="gradient-primary shadow-glow"><Plus className="mr-1.5 h-4 w-4" />Add account</Button>
+            <Button onClick={openCreate} className="h-8 rounded-xl px-4 text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm">
+              <Plus className="mr-1.5 h-3.5 w-3.5" />Add account
+            </Button>
           </DialogTrigger>
-          <DialogContent>
-            <DialogHeader><DialogTitle>{editing ? "Edit account" : "Link a new account"}</DialogTitle></DialogHeader>
+          <DialogContent className="rounded-2xl border-border/60">
+            <DialogHeader><DialogTitle className="font-display">{editing ? "Edit account" : "Link a new account"}</DialogTitle></DialogHeader>
             <div className="grid gap-4 py-2">
-              <div className="grid gap-2"><Label>Name</Label>
-                <Input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} placeholder="ICICI Salary" /></div>
+              <div className="grid gap-2"><Label className="text-xs font-bold">Name</Label>
+                <Input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} placeholder="HDFC Salary Account" className="rounded-xl h-9 text-xs" /></div>
               <div className="grid grid-cols-2 gap-3">
-                <div className="grid gap-2"><Label>Type</Label>
+                <div className="grid gap-2"><Label className="text-xs font-bold">Type</Label>
                   <Select value={draft.type} onValueChange={(v) => setDraft({ ...draft, type: v as AccountType })}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
+                    <SelectTrigger className="rounded-xl h-9 text-xs"><SelectValue /></SelectTrigger>
+                    <SelectContent className="rounded-xl">
                       {(["Bank", "Credit Card", "Debit Card", "Wallet", "UPI", "Cash"] as AccountType[]).map((t) => (
-                        <SelectItem key={t} value={t}>{t}</SelectItem>
+                        <SelectItem key={t} value={t} className="text-xs">{t}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="grid gap-2"><Label>Balance</Label>
-                  <CurrencyInput value={draft.balance} onChange={(v) => setDraft({ ...draft, balance: v })} step={500} allowNegative /></div>
+                <div className="grid gap-2"><Label className="text-xs font-bold">Balance</Label>
+                  <CurrencyInput value={draft.balance} onChange={(v) => setDraft({ ...draft, balance: v })} step={500} allowNegative className="rounded-xl h-9 text-xs" /></div>
               </div>
-              <div className="grid gap-2"><Label>Mask (optional)</Label>
-                <Input value={draft.mask} onChange={(e) => setDraft({ ...draft, mask: e.target.value })} placeholder="•• 1234" /></div>
+              <div className="grid gap-2"><Label className="text-xs font-bold">Mask (optional)</Label>
+                <Input value={draft.mask} onChange={(e) => setDraft({ ...draft, mask: e.target.value })} placeholder="•• 1234" className="rounded-xl h-9 text-xs" /></div>
             </div>
-            <DialogFooter><Button onClick={save} className="gradient-primary">{editing ? "Save" : "Add"}</Button></DialogFooter>
+            <DialogFooter><Button onClick={save} className="h-8 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white">{editing ? "Save Changes" : "Add Account"}</Button></DialogFooter>
           </DialogContent>
         </Dialog>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
-        <Card className="glass p-5">
-          <div className="text-xs uppercase tracking-widest text-muted-foreground">Net worth</div>
-          <div className="mt-1 font-numeric text-3xl font-semibold">{inr(total)}</div>
+      <div className="grid gap-3.5 sm:grid-cols-3">
+        <Card className="border border-border/60 bg-card/80 dark:bg-slate-900/80 backdrop-blur-md p-4 rounded-xl shadow-sm">
+          <div className="text-[11px] font-semibold text-muted-foreground tracking-wider uppercase">Net worth</div>
+          <div className="mt-2 font-numeric text-xl sm:text-2xl font-extrabold tracking-tight text-foreground">{inr(total)}</div>
         </Card>
-        <Card className="glass p-5">
-          <div className="flex items-center gap-1.5 text-xs uppercase tracking-widest text-muted-foreground"><TrendingUp className="h-3.5 w-3.5 text-emerald-500" />Assets</div>
-          <div className="mt-1 font-numeric text-3xl font-semibold text-emerald-600 dark:text-emerald-400">{inr(assets)}</div>
+        <Card className="border border-border/60 bg-card/80 dark:bg-slate-900/80 backdrop-blur-md p-4 rounded-xl shadow-sm">
+          <div className="flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground tracking-wider uppercase"><TrendingUp className="h-3.5 w-3.5 text-emerald-500" />Assets</div>
+          <div className="mt-2 font-numeric text-xl sm:text-2xl font-extrabold tracking-tight text-emerald-500">{inr(assets)}</div>
         </Card>
-        <Card className="glass p-5">
-          <div className="flex items-center gap-1.5 text-xs uppercase tracking-widest text-muted-foreground"><TrendingDown className="h-3.5 w-3.5 text-rose-500" />Liabilities</div>
-          <div className="mt-1 font-numeric text-3xl font-semibold text-rose-600 dark:text-rose-400">{inr(liabilities)}</div>
+        <Card className="border border-border/60 bg-card/80 dark:bg-slate-900/80 backdrop-blur-md p-4 rounded-xl shadow-sm">
+          <div className="flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground tracking-wider uppercase"><TrendingDown className="h-3.5 w-3.5 text-rose-500" />Liabilities</div>
+          <div className="mt-2 font-numeric text-xl sm:text-2xl font-extrabold tracking-tight text-rose-500">{inr(liabilities)}</div>
         </Card>
       </div>
 
@@ -133,30 +135,31 @@ function AccountsPage() {
           const Icon = iconFor(a.type);
           const negative = a.balance < 0;
           return (
-            <Card key={a.id} className="glass group relative overflow-hidden p-5">
-              <div className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full bg-primary/10 blur-3xl" />
+            <Card key={a.id} className="border border-border/60 bg-card/80 dark:bg-slate-900/80 backdrop-blur-md p-4 sm:p-5 rounded-2xl shadow-sm transition-all hover:border-indigo-500/40">
               <div className="flex items-start justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="grid h-11 w-11 place-items-center rounded-xl bg-primary/15 text-primary"><Icon className="h-5 w-5" /></div>
-                  <div>
-                    <div className="font-medium">{a.name}</div>
-                    <div className="text-xs text-muted-foreground">{a.type}{a.mask ? ` · ${a.mask}` : ""}</div>
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-indigo-500/15 text-indigo-400"><Icon className="h-5 w-5" /></div>
+                  <div className="min-w-0">
+                    <div className="font-bold text-xs sm:text-sm text-foreground truncate">{a.name}</div>
+                    <div className="text-[11px] text-muted-foreground">{a.type}{a.mask ? ` · ${a.mask}` : ""}</div>
                   </div>
                 </div>
-                <div className="flex items-center gap-1">
-                  <Badge variant="secondary" className="text-[10px]">Active</Badge>
-                  <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => openEdit(a)}><Pencil className="h-3.5 w-3.5" /></Button>
-                  <Button size="icon" variant="ghost" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => del(a.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
+                <div className="flex items-center gap-1 shrink-0">
+                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 rounded">Active</Badge>
+                  <Button size="icon" variant="ghost" className="h-7 w-7 rounded-lg text-muted-foreground hover:text-foreground" onClick={() => openEdit(a)}><Pencil className="h-3.5 w-3.5" /></Button>
+                  <Button size="icon" variant="ghost" className="h-7 w-7 rounded-lg text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => del(a.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
                 </div>
               </div>
-              <div className="mt-6 text-xs uppercase tracking-widest text-muted-foreground">Balance</div>
-              <div className={`font-numeric text-2xl font-semibold ${negative ? "text-rose-500 dark:text-rose-400" : ""}`}>{inr(a.balance)}</div>
+              <div className="mt-4 pt-3 border-t border-border/40 flex items-center justify-between">
+                <span className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">Balance</span>
+                <div className={`font-numeric text-lg sm:text-xl font-extrabold ${negative ? "text-rose-500" : "text-foreground"}`}>{inr(a.balance)}</div>
+              </div>
             </Card>
           );
         })}
         {local.length === 0 && (
-          <Card className="glass col-span-full grid place-items-center gap-2 py-16 text-center text-muted-foreground">
-            No accounts yet — add one to get started.
+          <Card className="border border-border/60 bg-card/70 backdrop-blur col-span-full grid place-items-center gap-2 py-12 text-center text-xs text-muted-foreground rounded-2xl">
+            No accounts yet — click "+ Add account" to create your first account!
           </Card>
         )}
       </div>

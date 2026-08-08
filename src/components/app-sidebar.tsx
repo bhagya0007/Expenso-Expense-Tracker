@@ -1,7 +1,7 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
   LayoutDashboard, ArrowLeftRight, Wallet, PieChart,
-  Sparkles, Bell, Settings, FileSearch, User, LogOut, ChevronsUpDown,
+  Sparkles, Bell, Settings, User, LogOut, ChevronsUpDown,
 } from "lucide-react";
 import {
   Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent, SidebarGroupLabel,
@@ -22,8 +22,6 @@ const main = [
 
 const smart = [
   { title: "AI Insights", url: "/insights", icon: Sparkles },
-  { title: "Bank Statement", url: "/bank-statement", icon: FileSearch },
-  
   { title: "Reminders", url: "/reminders", icon: Bell },
   { title: "Settings", url: "/settings", icon: Settings },
 ];

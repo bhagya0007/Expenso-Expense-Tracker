@@ -173,86 +173,86 @@ function ProfilePage() {
   }
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6 p-4 md:p-8">
+    <div className="space-y-4 p-4 sm:p-5 max-w-7xl mx-auto">
       <div>
-        <h1 className="font-display text-2xl font-bold md:text-3xl">Your Profile</h1>
-        <p className="text-sm text-muted-foreground">Manage your personal details and financial defaults.</p>
+        <h1 className="text-xl sm:text-2xl font-extrabold font-display tracking-tight text-foreground">Your Profile</h1>
+        <p className="text-xs text-muted-foreground mt-0.5">Manage your personal details and financial defaults.</p>
       </div>
 
-      <Card className="p-6 space-y-6">
-        <div className="flex items-center gap-2 font-display text-lg font-semibold">
-          <UserIcon className="h-5 w-5 text-primary" /> Personal Details
+      <Card className="border border-border/60 bg-card/80 dark:bg-slate-900/80 backdrop-blur-md p-4 sm:p-5 rounded-2xl shadow-sm space-y-5">
+        <div className="flex items-center gap-2 font-display text-sm font-bold text-foreground">
+          <UserIcon className="h-4 w-4 text-indigo-500" /> Personal Details
         </div>
-        <div className="flex flex-col sm:flex-row items-center gap-6">
-          <Avatar className="h-20 w-20 border-2 border-border">
+        <div className="flex flex-col sm:flex-row items-center gap-5">
+          <Avatar className="h-16 w-16 border-2 border-indigo-500/30">
             <AvatarImage src={row.avatar_url ?? undefined} />
-            <AvatarFallback className="text-xl font-bold bg-primary/10 text-primary">{initials}</AvatarFallback>
+            <AvatarFallback className="text-lg font-bold bg-indigo-500/15 text-indigo-400">{initials}</AvatarFallback>
           </Avatar>
-          <div className="space-y-1 text-center sm:text-left">
-            <div className="font-semibold text-lg">{row.full_name || "Expenso User"}</div>
-            <div className="text-sm text-muted-foreground">{email}</div>
+          <div className="space-y-0.5 text-center sm:text-left">
+            <div className="font-bold text-base text-foreground">{row.full_name || "Expenso User"}</div>
+            <div className="text-xs text-muted-foreground">{email}</div>
           </div>
         </div>
-        <Separator />
+        <Separator className="opacity-50" />
         <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-2">
-            <Label htmlFor="fn">Full Name</Label>
-            <Input id="fn" value={row.full_name ?? ""} onChange={(e) => setRow({ ...row, full_name: e.target.value })} placeholder="Your full name" />
+          <div className="space-y-1.5">
+            <Label htmlFor="fn" className="text-xs font-bold">Full Name</Label>
+            <Input id="fn" value={row.full_name ?? ""} onChange={(e) => setRow({ ...row, full_name: e.target.value })} placeholder="Your full name" className="rounded-xl h-9 text-xs" />
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="ph">Phone Number</Label>
-            <Input id="ph" value={row.phone ?? ""} onChange={(e) => setRow({ ...row, phone: e.target.value })} placeholder="+91 98765 43210" />
+          <div className="space-y-1.5">
+            <Label htmlFor="ph" className="text-xs font-bold">Phone Number</Label>
+            <Input id="ph" value={row.phone ?? ""} onChange={(e) => setRow({ ...row, phone: e.target.value })} placeholder="+91 98765 43210" className="rounded-xl h-9 text-xs" />
           </div>
         </div>
       </Card>
 
-      <Card className="p-6 space-y-6">
-        <div className="flex items-center gap-2 font-display text-lg font-semibold">
-          <Wallet className="h-5 w-5 text-primary" /> Finance Defaults
+      <Card className="border border-border/60 bg-card/80 dark:bg-slate-900/80 backdrop-blur-md p-4 sm:p-5 rounded-2xl shadow-sm space-y-5">
+        <div className="flex items-center gap-2 font-display text-sm font-bold text-foreground">
+          <Wallet className="h-4 w-4 text-indigo-500" /> Finance Defaults
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-2">
-            <Label htmlFor="curr">Preferred Currency</Label>
+          <div className="space-y-1.5">
+            <Label htmlFor="curr" className="text-xs font-bold">Preferred Currency</Label>
             <Select value={row.currency} onValueChange={(v) => setRow({ ...row, currency: v })}>
-              <SelectTrigger id="curr"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="INR">₹ INR (Indian Rupee)</SelectItem>
-                <SelectItem value="USD">$ USD (US Dollar)</SelectItem>
-                <SelectItem value="EUR">€ EUR (Euro)</SelectItem>
-                <SelectItem value="GBP">£ GBP (British Pound)</SelectItem>
+              <SelectTrigger id="curr" className="rounded-xl h-9 text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent className="rounded-xl">
+                <SelectItem value="INR" className="text-xs">₹ INR (Indian Rupee)</SelectItem>
+                <SelectItem value="USD" className="text-xs">$ USD (US Dollar)</SelectItem>
+                <SelectItem value="EUR" className="text-xs">€ EUR (Euro)</SelectItem>
+                <SelectItem value="GBP" className="text-xs">£ GBP (British Pound)</SelectItem>
               </SelectContent>
             </Select>
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="inc">Expected Monthly Income (₹)</Label>
-            <Input id="inc" type="number" value={row.monthly_income ?? ""} onChange={(e) => setRow({ ...row, monthly_income: Number(e.target.value) })} placeholder="50000" />
+          <div className="space-y-1.5">
+            <Label htmlFor="inc" className="text-xs font-bold">Expected Monthly Income (₹)</Label>
+            <Input id="inc" type="number" value={row.monthly_income ?? ""} onChange={(e) => setRow({ ...row, monthly_income: Number(e.target.value) })} placeholder="50000" className="rounded-xl h-9 text-xs" />
           </div>
         </div>
       </Card>
 
-      <Card className="p-6 space-y-4">
-        <div className="flex items-center gap-2 font-display text-lg font-semibold">
-          <Bell className="h-5 w-5 text-primary" /> Notifications
+      <Card className="border border-border/60 bg-card/80 dark:bg-slate-900/80 backdrop-blur-md p-4 sm:p-5 rounded-2xl shadow-sm space-y-4">
+        <div className="flex items-center gap-2 font-display text-sm font-bold text-foreground">
+          <Bell className="h-4 w-4 text-indigo-500" /> Notifications
         </div>
         <div className="flex items-center justify-between">
           <div>
-            <div className="text-sm font-medium">Bill Reminders</div>
-            <div className="text-xs text-muted-foreground">Alerts for upcoming recurring payments</div>
+            <div className="text-xs font-bold text-foreground">Bill Reminders</div>
+            <div className="text-[11px] text-muted-foreground">Alerts for upcoming recurring payments</div>
           </div>
           <Switch checked={row.notify_bills} onCheckedChange={(v) => setRow({ ...row, notify_bills: v })} />
         </div>
-        <Separator />
+        <Separator className="opacity-50" />
         <div className="flex items-center justify-between">
           <div>
-            <div className="text-sm font-medium">Budget Alerts</div>
-            <div className="text-xs text-muted-foreground">Alerts when spending approaches limit</div>
+            <div className="text-xs font-bold text-foreground">Budget Alerts</div>
+            <div className="text-[11px] text-muted-foreground">Alerts when spending approaches limit</div>
           </div>
           <Switch checked={row.notify_budgets} onCheckedChange={(v) => setRow({ ...row, notify_budgets: v })} />
         </div>
       </Card>
 
-      <div className="flex justify-end">
-        <Button onClick={save} disabled={saving} size="lg" className="gap-2">
+      <div className="flex justify-end pt-2">
+        <Button onClick={save} disabled={saving} className="h-9 px-5 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white gap-2 shadow-sm">
           <Save className="h-4 w-4" />
           {saving ? "Saving…" : "Save Profile"}
         </Button>

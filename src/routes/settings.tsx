@@ -185,41 +185,41 @@ function SettingsPage() {
   }
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6 p-6">
+    <div className="space-y-4 p-4 sm:p-5 max-w-7xl mx-auto">
       <div>
-        <h1 className="font-display text-3xl font-bold tracking-tight">Settings</h1>
-        <p className="text-sm text-muted-foreground">Security, appearance, notifications & data.</p>
+        <h1 className="text-xl sm:text-2xl font-extrabold font-display tracking-tight text-foreground">Settings</h1>
+        <p className="text-xs text-muted-foreground mt-0.5">Manage security, appearance, notifications and data preferences.</p>
       </div>
 
       <Section icon={Shield} title="Security" desc="Protect your account">
         <Row title="Two-factor authentication" desc="Require a code on new devices">
           <div className="flex items-center gap-2">
-            <Badge variant="secondary" className="gap-1"><Sparkles className="h-3 w-3" />Coming soon</Badge>
+            <Badge variant="outline" className="gap-1 text-[10px]"><Sparkles className="h-3 w-3 text-indigo-500" />Coming soon</Badge>
             <Switch checked={false} disabled aria-label="Two-factor authentication (coming soon)" />
           </div>
         </Row>
-        <Separator className="my-3" />
+        <Separator className="my-3 opacity-50" />
         <Row title="Biometric unlock" desc="Face ID / fingerprint on mobile">
           <div className="flex items-center gap-2">
-            <Badge variant="secondary" className="gap-1"><Sparkles className="h-3 w-3" />Coming soon</Badge>
+            <Badge variant="outline" className="gap-1 text-[10px]"><Sparkles className="h-3 w-3 text-indigo-500" />Coming soon</Badge>
             <Switch checked={false} disabled aria-label="Biometric unlock (coming soon)" />
           </div>
         </Row>
-        <Separator className="my-3" />
+        <Separator className="my-3 opacity-50" />
         <Row title="Change password" desc="Update your account password">
-          <Button variant="secondary" onClick={handlePasswordReset} disabled={resetting}>
-            {resetting ? "Sending…" : "Change"}
+          <Button variant="outline" onClick={handlePasswordReset} disabled={resetting} className="h-8 rounded-xl px-3 text-xs font-semibold bg-background/50 border-border/60 hover:bg-muted text-foreground">
+            {resetting ? "Sending…" : "Change Password"}
           </Button>
         </Row>
       </Section>
 
       <Section icon={Bell} title="Notifications" desc="What you hear from Expenso">
         <Row title="Bill reminders"><Switch checked={notif.bills} onCheckedChange={(v) => setNotif({ ...notif, bills: v })} /></Row>
-        <Separator className="my-3" />
+        <Separator className="my-3 opacity-50" />
         <Row title="Budget alerts"><Switch checked={notif.budgets} onCheckedChange={(v) => setNotif({ ...notif, budgets: v })} /></Row>
-        <Separator className="my-3" />
+        <Separator className="my-3 opacity-50" />
         <Row title="Weekly digest"><Switch checked={notif.weekly} onCheckedChange={(v) => setNotif({ ...notif, weekly: v })} /></Row>
-        <Separator className="my-3" />
+        <Separator className="my-3 opacity-50" />
         <Row title="Anomaly detection"><Switch checked={notif.anomalies} onCheckedChange={(v) => setNotif({ ...notif, anomalies: v })} /></Row>
       </Section>
 
@@ -228,25 +228,25 @@ function SettingsPage() {
       </Section>
 
       <Section icon={CreditCard} title="Plan" desc="Your Expenso plan">
-        <div className="relative overflow-hidden rounded-xl border border-border p-4">
+        <div className="relative overflow-hidden rounded-xl border border-border/60 bg-background/50 p-4">
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <div className="font-semibold">Expenso — Free</div>
-                <Badge className="bg-emerald-500/15 text-emerald-500 hover:bg-emerald-500/20">Free forever</Badge>
+                <div className="font-bold text-sm text-foreground">Expenso — Free</div>
+                <Badge className="bg-emerald-500/15 text-emerald-500 hover:bg-emerald-500/20 text-[10px] font-bold border-none">Free forever</Badge>
               </div>
               <div className="mt-1 text-xs text-muted-foreground">
                 All features included — AI insights, bank statement analyzer, forecasts and more.
               </div>
             </div>
             <div className="hidden sm:flex flex-col items-end">
-              <Badge variant="secondary" className="gap-1">
-                <Sparkles className="h-3 w-3" /> Pro · Coming soon
+              <Badge variant="outline" className="gap-1 text-[10px]">
+                <Sparkles className="h-3 w-3 text-indigo-500" /> Pro · Coming soon
               </Badge>
               <span className="mt-1 text-[11px] text-muted-foreground">No billing today</span>
             </div>
           </div>
-          <div className="mt-4 rounded-lg border border-dashed border-border/70 bg-muted/30 p-3 text-xs text-muted-foreground">
+          <div className="mt-3 rounded-lg border border-dashed border-border/70 bg-muted/20 p-3 text-[11px] text-muted-foreground">
             We're cooking up an Expenso Pro tier with advanced automations and family sharing.
             You'll be the first to know when it launches — no charges until then.
           </div>
@@ -255,22 +255,22 @@ function SettingsPage() {
 
       <Section icon={Download} title="Data" desc="Export or delete your data">
         <div className="flex flex-wrap gap-2">
-          <Button variant="secondary" onClick={exportCSV}>Export CSV</Button>
-          <Button variant="secondary" onClick={exportPDF}>Export PDF report</Button>
+          <Button variant="outline" onClick={exportCSV} className="h-8 rounded-xl px-3 text-xs font-semibold bg-background/50 border-border/60 hover:bg-muted text-foreground">Export CSV</Button>
+          <Button variant="outline" onClick={exportPDF} className="h-8 rounded-xl px-3 text-xs font-semibold bg-background/50 border-border/60 hover:bg-muted text-foreground">Export PDF report</Button>
           <AlertDialog>
             <AlertDialogTrigger asChild>
-              <Button variant="destructive" disabled={deleting}>{deleting ? "Deleting…" : "Delete account"}</Button>
+              <Button variant="destructive" disabled={deleting} className="h-8 rounded-xl px-3 text-xs font-semibold">{deleting ? "Deleting…" : "Delete account"}</Button>
             </AlertDialogTrigger>
-            <AlertDialogContent>
+            <AlertDialogContent className="rounded-2xl border-border/60">
               <AlertDialogHeader>
-                <AlertDialogTitle>Delete your Expenso account?</AlertDialogTitle>
-                <AlertDialogDescription>
+                <AlertDialogTitle className="font-display">Delete your Expenso account?</AlertDialogTitle>
+                <AlertDialogDescription className="text-xs">
                   This permanently deletes your profile and sign-in. You can create a new account with the same email afterwards. This cannot be undone.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                <AlertDialogCancel className="h-8 rounded-xl text-xs">Cancel</AlertDialogCancel>
+                <AlertDialogAction onClick={handleDelete} className="h-8 rounded-xl text-xs bg-destructive text-destructive-foreground hover:bg-destructive/90">
                   Yes, delete my account
                 </AlertDialogAction>
               </AlertDialogFooter>
@@ -284,11 +284,11 @@ function SettingsPage() {
 
 function Section({ icon: Icon, title, desc, children }: { icon: React.ComponentType<{ className?: string }>; title: string; desc: string; children: React.ReactNode }) {
   return (
-    <Card className="glass p-5">
-      <div className="mb-4 flex items-center gap-3">
-        <div className="grid h-10 w-10 place-items-center rounded-xl bg-primary/15 text-primary"><Icon className="h-4.5 w-4.5" /></div>
+    <Card className="border border-border/60 bg-card/80 dark:bg-slate-900/80 backdrop-blur-md p-4 sm:p-5 rounded-2xl shadow-sm space-y-4">
+      <div className="flex items-center gap-3">
+        <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-indigo-500/15 text-indigo-400"><Icon className="h-5 w-5" /></div>
         <div>
-          <div className="font-semibold">{title}</div>
+          <div className="font-bold text-sm text-foreground">{title}</div>
           <div className="text-xs text-muted-foreground">{desc}</div>
         </div>
       </div>
@@ -301,8 +301,8 @@ function Row({ title, desc, children }: { title: string; desc?: string; children
   return (
     <div className="flex items-center justify-between gap-4">
       <div>
-        <div className="text-sm font-medium">{title}</div>
-        {desc && <div className="text-xs text-muted-foreground">{desc}</div>}
+        <div className="text-xs font-bold text-foreground">{title}</div>
+        {desc && <div className="text-[11px] text-muted-foreground">{desc}</div>}
       </div>
       {children}
     </div>
@@ -313,8 +313,8 @@ function ThemeRow() {
   const { theme, toggle } = useTheme();
   return (
     <Row title="Theme" desc={theme === "dark" ? "Dark — easy on the eyes at night" : "Light — bright and airy"}>
-      <Button variant="secondary" onClick={toggle} className="gap-2">
-        {theme === "dark" ? <><Sun className="h-4 w-4" />Switch to light</> : <><Moon className="h-4 w-4" />Switch to dark</>}
+      <Button variant="outline" onClick={toggle} className="h-8 rounded-xl px-3 text-xs font-semibold bg-background/50 border-border/60 hover:bg-muted text-foreground gap-2">
+        {theme === "dark" ? <><Sun className="h-3.5 w-3.5" />Switch to light</> : <><Moon className="h-3.5 w-3.5" />Switch to dark</>}
       </Button>
     </Row>
   );
