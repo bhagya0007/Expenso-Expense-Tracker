@@ -52,7 +52,6 @@ export function StatementPreview({
       totalCredits,
       netChange,
       totalRows: transactions.length,
-      flaggedRows: transactions.filter((t) => t.isFlagged).length,
     };
   }, [transactions]);
 
@@ -63,7 +62,6 @@ export function StatementPreview({
       description: tx.description,
       amount: tx.amount,
       type: tx.type,
-      category: tx.category || "Uncategorized",
     });
   };
 
@@ -76,7 +74,6 @@ export function StatementPreview({
               description: editForm.description || t.description,
               amount: editForm.amount !== undefined ? Number(editForm.amount) : t.amount,
               type: editForm.type || t.type,
-              category: editForm.category || t.category,
               isFlagged: false,
             }
           : t
@@ -94,109 +91,103 @@ export function StatementPreview({
   // Delete Handler
   const handleDeleteRow = (txId: string) => {
     setTransactions((prev) => prev.filter((t) => t.id !== txId));
-    toast.info("Transaction removed from draft preview");
+    toast.info("Transaction removed");
   };
 
   const formatCurrency = (val: number) => {
     return new Intl.NumberFormat("en-IN", {
       style: "currency",
-      currency: statement.metadata.currency || "INR",
+      currency: statement.metadata?.currency || "INR",
       maximumFractionDigits: 2,
     }).format(val);
   };
 
   return (
-    <div className="space-y-6">
-      {/* Draft State Notice Banner with Top Action Bar */}
-      <motion.div
-        initial={{ opacity: 0, y: -10 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 text-amber-200 text-xs sm:text-sm backdrop-blur"
-      >
-        <div className="flex items-center gap-2.5">
-          <Sparkles className="h-5 w-5 text-amber-400 shrink-0" />
-          <div>
-            <span className="font-bold">Draft Preview:</span> Review, edit, or delete transactions before importing.
-          </div>
+    <div className="space-y-6 max-w-6xl mx-auto">
+      {/* Top Header Bar */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-2 border-b border-border/40">
+        <div>
+          <h2 className="text-xl font-bold font-display text-foreground flex items-center gap-2">
+            <FileText className="h-5 w-5 text-muted-foreground" /> Statement Draft Review
+          </h2>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Review and edit extracted transactions before finalizing import.
+          </p>
         </div>
 
-        <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
-          <Badge variant="outline" className="border-amber-400/40 text-amber-300 font-mono text-[10px] uppercase shrink-0">
-            Source: bank_statement
-          </Badge>
-
-          {/* Top Cancel & Discard Draft Button */}
+        <div className="flex items-center gap-3">
           <Button
             type="button"
             variant="outline"
             size="sm"
             onClick={onCancel}
-            className="rounded-xl border-amber-400/30 bg-amber-500/20 text-amber-200 hover:bg-destructive hover:text-destructive-foreground hover:border-destructive transition-colors text-xs font-semibold px-3 py-1.5 shrink-0"
+            className="rounded-lg text-xs"
           >
-            <RotateCcw className="mr-1.5 h-3.5 w-3.5" /> Cancel & Discard Draft
+            <RotateCcw className="mr-1.5 h-3.5 w-3.5" /> Discard Draft
+          </Button>
+
+          <Button
+            type="button"
+            onClick={() => onConfirmImport(transactions)}
+            disabled={transactions.length === 0}
+            className="rounded-lg text-xs font-semibold px-5 py-2"
+          >
+            <CheckCircle2 className="mr-1.5 h-4 w-4" /> Confirm & Import ({transactions.length})
           </Button>
         </div>
-      </motion.div>
+      </div>
 
-      {/* Summary KPI Cards Grid */}
+      {/* Summary Metric Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Total Debits */}
-        <Card className="p-5 border-border/60 gradient-card backdrop-blur space-y-2">
+        <Card className="p-4 border border-border/50 bg-card/60 backdrop-blur rounded-xl space-y-1">
           <div className="flex items-center justify-between text-xs text-muted-foreground font-medium">
-            <span>Total Debits (Spent)</span>
-            <div className="grid h-8 w-8 place-items-center rounded-xl bg-destructive/10 text-destructive border border-destructive/20">
-              <ArrowDownRight className="h-4 w-4" />
-            </div>
+            <span>Total Debits</span>
+            <ArrowDownRight className="h-4 w-4 text-destructive" />
           </div>
-          <div className="text-xl sm:text-2xl font-bold font-display text-destructive">
+          <div className="text-xl font-bold font-display text-destructive">
             {formatCurrency(metrics.totalDebits)}
           </div>
           <div className="text-[11px] text-muted-foreground">
-            {transactions.filter((t) => t.type === "debit").length} debit transactions
+            {transactions.filter((t) => t.type === "debit").length} debit rows
           </div>
         </Card>
 
         {/* Total Credits */}
-        <Card className="p-5 border-border/60 gradient-card backdrop-blur space-y-2">
+        <Card className="p-4 border border-border/50 bg-card/60 backdrop-blur rounded-xl space-y-1">
           <div className="flex items-center justify-between text-xs text-muted-foreground font-medium">
-            <span>Total Credits (Received)</span>
-            <div className="grid h-8 w-8 place-items-center rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-              <ArrowUpRight className="h-4 w-4" />
-            </div>
+            <span>Total Credits</span>
+            <ArrowUpRight className="h-4 w-4 text-emerald-500" />
           </div>
-          <div className="text-xl sm:text-2xl font-bold font-display text-emerald-400">
+          <div className="text-xl font-bold font-display text-emerald-500">
             {formatCurrency(metrics.totalCredits)}
           </div>
           <div className="text-[11px] text-muted-foreground">
-            {transactions.filter((t) => t.type === "credit").length} credit transactions
+            {transactions.filter((t) => t.type === "credit").length} credit rows
           </div>
         </Card>
 
         {/* Net Change */}
-        <Card className="p-5 border-border/60 gradient-card backdrop-blur space-y-2">
+        <Card className="p-4 border border-border/50 bg-card/60 backdrop-blur rounded-xl space-y-1">
           <div className="flex items-center justify-between text-xs text-muted-foreground font-medium">
-            <span>Net Change</span>
-            <div className="grid h-8 w-8 place-items-center rounded-xl bg-primary/10 text-primary border border-primary/20">
-              <Wallet className="h-4 w-4" />
-            </div>
+            <span>Net Balance Change</span>
+            <Wallet className="h-4 w-4 text-muted-foreground" />
           </div>
-          <div className={`text-xl sm:text-2xl font-bold font-display ${metrics.netChange >= 0 ? "text-emerald-400" : "text-destructive"}`}>
+          <div className={`text-xl font-bold font-display ${metrics.netChange >= 0 ? "text-emerald-500" : "text-destructive"}`}>
             {formatCurrency(metrics.netChange)}
           </div>
           <div className="text-[11px] text-muted-foreground">
-            Opening {formatCurrency(statement.openingBalance || 0)}
+            Net statement flow
           </div>
         </Card>
 
-        {/* Statement Info */}
-        <Card className="p-5 border-border/60 gradient-card backdrop-blur space-y-2">
+        {/* Statement Bank Info */}
+        <Card className="p-4 border border-border/50 bg-card/60 backdrop-blur rounded-xl space-y-1">
           <div className="flex items-center justify-between text-xs text-muted-foreground font-medium">
-            <span>Bank & Account</span>
-            <div className="grid h-8 w-8 place-items-center rounded-xl bg-accent text-accent-foreground border border-border">
-              <Building2 className="h-4 w-4" />
-            </div>
+            <span>Detected Bank</span>
+            <Building2 className="h-4 w-4 text-muted-foreground" />
           </div>
-          <div className="text-base font-semibold font-display text-foreground truncate">
+          <div className="text-base font-bold font-display text-foreground truncate">
             {statement.bankName}
           </div>
           <div className="text-[11px] text-muted-foreground font-mono">
@@ -205,57 +196,36 @@ export function StatementPreview({
         </Card>
       </div>
 
-      {/* Main Transactions Table Card */}
-      <Card className="overflow-hidden border-border/60 gradient-card shadow-card backdrop-blur-xl">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-5 border-b border-border/60 gap-4">
-          <div>
-            <h3 className="font-display font-bold text-lg text-foreground flex items-center gap-2">
-              <FileText className="h-5 w-5 text-primary" /> Extracted Statement Transactions
-            </h3>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Showing {metrics.totalRows} transactions ready to import. Source will be recorded as <code className="text-primary font-mono">bank_statement</code>.
-            </p>
+      {/* Main Transactions Table */}
+      <Card className="overflow-hidden border border-border/50 bg-card/40 backdrop-blur rounded-xl shadow-sm">
+        <div className="flex items-center justify-between p-4 border-b border-border/40 bg-muted/20">
+          <div className="font-semibold text-sm text-foreground">
+            Extracted Transactions ({metrics.totalRows})
           </div>
-
-          <div className="flex items-center gap-2">
-            <Badge variant="outline" className="rounded-xl border-primary/30 text-primary px-3 py-1 font-semibold text-xs">
-              {metrics.totalRows} Rows
-            </Badge>
-
-            {/* Top Secondary Cancel Action */}
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={onCancel}
-              className="rounded-xl border-border/60 text-muted-foreground hover:bg-destructive/10 hover:text-destructive text-xs"
-            >
-              <X className="mr-1 h-3.5 w-3.5" /> Cancel Draft
-            </Button>
+          <div className="text-xs text-muted-foreground font-mono">
+            Source: PDF Statement
           </div>
         </div>
 
-        {/* Table Container */}
         <div className="overflow-x-auto">
           <Table>
-            <TableHeader className="bg-background/40">
-              <TableRow className="border-border/60 hover:bg-transparent">
-                <TableHead className="w-[60px] text-center font-bold">Sr. No.</TableHead>
-                <TableHead className="w-[110px]">Date</TableHead>
-                <TableHead className="min-w-[220px]">Description</TableHead>
-                <TableHead className="w-[140px]">Category</TableHead>
-                <TableHead className="w-[100px] text-center">Type</TableHead>
-                <TableHead className="w-[130px] text-right">Amount</TableHead>
-                <TableHead className="w-[130px] text-right">Balance</TableHead>
-                <TableHead className="w-[100px] text-center">Actions</TableHead>
+            <TableHeader className="bg-muted/40">
+              <TableRow className="border-border/40 hover:bg-transparent">
+                <TableHead className="w-[60px] text-center font-semibold text-xs">Sr. No.</TableHead>
+                <TableHead className="w-[120px] font-semibold text-xs">Date</TableHead>
+                <TableHead className="min-w-[240px] font-semibold text-xs">Description</TableHead>
+                <TableHead className="w-[100px] text-center font-semibold text-xs">Type</TableHead>
+                <TableHead className="w-[130px] text-right font-semibold text-xs">Amount</TableHead>
+                <TableHead className="w-[130px] text-right font-semibold text-xs">Balance</TableHead>
+                <TableHead className="w-[90px] text-center font-semibold text-xs">Actions</TableHead>
               </TableRow>
             </TableHeader>
 
             <TableBody>
               {transactions.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center py-12 text-muted-foreground text-sm">
-                    No transactions remaining in draft preview.
+                  <TableCell colSpan={7} className="text-center py-12 text-muted-foreground text-sm">
+                    No transactions remaining in draft.
                   </TableCell>
                 </TableRow>
               ) : (
@@ -264,61 +234,29 @@ export function StatementPreview({
                   const isCredit = tx.type === "credit";
 
                   return (
-                    <TableRow key={tx.id} className="border-border/40 hover:bg-background/60 transition-colors">
-                      {/* Sr. No. Column */}
-                      <TableCell className="text-center font-mono text-xs text-muted-foreground font-semibold">
+                    <TableRow key={tx.id} className="border-border/30 hover:bg-muted/20 transition-colors">
+                      {/* Sr. No. */}
+                      <TableCell className="text-center font-mono text-xs text-muted-foreground">
                         {index + 1}
                       </TableCell>
 
                       {/* Date */}
                       <TableCell className="font-mono text-xs text-foreground whitespace-nowrap">
-                        {tx.rawDate || new Date(tx.date).toLocaleDateString()}
+                        {tx.rawDate || (tx.date ? new Date(tx.date).toLocaleDateString("en-IN") : "—")}
                       </TableCell>
 
-                      {/* Description / Edit Input */}
-                      <TableCell className="max-w-[320px]">
+                      {/* Description */}
+                      <TableCell className="max-w-[340px]">
                         {isEditing ? (
                           <Input
                             value={editForm.description || ""}
                             onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
-                            className="h-8 text-xs bg-background border-primary/40 focus-visible:ring-1"
+                            className="h-8 text-xs bg-background"
                           />
                         ) : (
-                          <div className="space-y-0.5">
-                            <div className="font-medium text-xs text-foreground truncate" title={tx.description}>
-                              {tx.description}
-                            </div>
-                            {tx.isFlagged && (
-                              <Badge variant="outline" className="text-[9px] border-amber-500/40 text-amber-400 bg-amber-500/10 px-1.5 py-0">
-                                <AlertTriangle className="mr-1 h-2.5 w-2.5" /> Flagged Row
-                              </Badge>
-                            )}
+                          <div className="font-medium text-xs text-foreground truncate" title={tx.description}>
+                            {tx.description}
                           </div>
-                        )}
-                      </TableCell>
-
-                      {/* Category Select */}
-                      <TableCell>
-                        {isEditing ? (
-                          <Select
-                            value={editForm.category || "Uncategorized"}
-                            onValueChange={(val) => setEditForm({ ...editForm, category: val })}
-                          >
-                            <SelectTrigger className="h-8 text-xs bg-background border-primary/40">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {DEFAULT_STATEMENT_CATEGORIES.map((cat) => (
-                                <SelectItem key={cat} value={cat} className="text-xs">
-                                  {cat}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        ) : (
-                          <Badge variant="outline" className="text-[11px] font-normal border-border/60 text-muted-foreground">
-                            {tx.category || "Uncategorized"}
-                          </Badge>
                         )}
                       </TableCell>
 
@@ -329,7 +267,7 @@ export function StatementPreview({
                             value={editForm.type || "debit"}
                             onValueChange={(val) => setEditForm({ ...editForm, type: val as "debit" | "credit" })}
                           >
-                            <SelectTrigger className="h-8 text-xs bg-background border-primary/40">
+                            <SelectTrigger className="h-8 text-xs bg-background">
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
@@ -340,10 +278,10 @@ export function StatementPreview({
                         ) : (
                           <Badge
                             variant="outline"
-                            className={`text-[10px] font-semibold uppercase px-2 py-0.5 ${
+                            className={`text-[10px] font-medium uppercase px-2 py-0.5 ${
                               isCredit
-                                ? "border-emerald-500/40 text-emerald-400 bg-emerald-500/10"
-                                : "border-destructive/40 text-destructive bg-destructive/10"
+                                ? "border-emerald-500/30 text-emerald-500 bg-emerald-500/5"
+                                : "border-destructive/30 text-destructive bg-destructive/5"
                             }`}
                           >
                             {tx.type}
@@ -359,10 +297,10 @@ export function StatementPreview({
                             step="0.01"
                             value={editForm.amount || 0}
                             onChange={(e) => setEditForm({ ...editForm, amount: parseFloat(e.target.value) || 0 })}
-                            className="h-8 text-xs text-right bg-background border-primary/40"
+                            className="h-8 text-xs text-right bg-background"
                           />
                         ) : (
-                          <span className={isCredit ? "text-emerald-400" : "text-foreground"}>
+                          <span className={isCredit ? "text-emerald-500" : "text-foreground"}>
                             {isCredit ? "+" : "-"}{formatCurrency(tx.amount)}
                           </span>
                         )}
@@ -383,7 +321,7 @@ export function StatementPreview({
                                 variant="ghost"
                                 size="icon"
                                 onClick={() => handleSaveEdit(tx.id)}
-                                className="h-7 w-7 text-emerald-400 hover:bg-emerald-500/20"
+                                className="h-7 w-7 text-emerald-500 hover:bg-emerald-500/10"
                                 title="Save Row"
                               >
                                 <Check className="h-4 w-4" />
@@ -393,7 +331,7 @@ export function StatementPreview({
                                 variant="ghost"
                                 size="icon"
                                 onClick={handleCancelEdit}
-                                className="h-7 w-7 text-muted-foreground hover:bg-secondary"
+                                className="h-7 w-7 text-muted-foreground hover:bg-muted"
                                 title="Cancel Edit"
                               >
                                 <X className="h-4 w-4" />
@@ -406,7 +344,7 @@ export function StatementPreview({
                                 variant="ghost"
                                 size="icon"
                                 onClick={() => handleStartEdit(tx)}
-                                className="h-7 w-7 text-muted-foreground hover:text-primary hover:bg-primary/10"
+                                className="h-7 w-7 text-muted-foreground hover:text-foreground"
                                 title="Edit Row"
                               >
                                 <Edit2 className="h-3.5 w-3.5" />
@@ -416,7 +354,7 @@ export function StatementPreview({
                                 variant="ghost"
                                 size="icon"
                                 onClick={() => handleDeleteRow(tx.id)}
-                                className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                                className="h-7 w-7 text-muted-foreground hover:text-destructive"
                                 title="Delete Row"
                               >
                                 <Trash2 className="h-3.5 w-3.5" />
@@ -433,15 +371,18 @@ export function StatementPreview({
           </Table>
         </div>
 
-        {/* Footer Toolbar: Confirm Import Action */}
-        <div className="flex flex-col sm:flex-row items-center justify-end p-5 border-t border-border/60 bg-background/30 gap-4">
+        {/* Footer Bar */}
+        <div className="flex items-center justify-between p-4 border-t border-border/40 bg-muted/10">
+          <div className="text-xs text-muted-foreground">
+            {transactions.length} rows staged for import
+          </div>
           <Button
             type="button"
             onClick={() => onConfirmImport(transactions)}
             disabled={transactions.length === 0}
-            className="w-full sm:w-auto rounded-xl gradient-primary text-primary-foreground font-semibold shadow-glow hover:opacity-95 px-8 py-2.5 text-sm"
+            className="rounded-lg text-xs font-semibold px-6 py-2"
           >
-            <CheckCircle2 className="mr-2 h-4.5 w-4.5" /> Confirm & Import ({transactions.length}) Statement Transactions
+            <CheckCircle2 className="mr-1.5 h-4 w-4" /> Confirm & Import Transactions
           </Button>
         </div>
       </Card>

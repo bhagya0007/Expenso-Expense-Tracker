@@ -10,7 +10,7 @@ RAW_TO_STANDARD_MAP: Dict[str, List[str]] = {
     "description": [
         "narration", "particulars", "description", "remarks", "details",
         "transaction details", "transaction remarks", "transaction particulars",
-        "narration/particulars", "desc"
+        "narration/particulars", "desc", "summary"
     ],
     "reference": [
         "ref no./cheque no.", "chq./ref.no.", "cheque number", "chqno",
@@ -22,13 +22,20 @@ RAW_TO_STANDARD_MAP: Dict[str, List[str]] = {
         "withdrawal amt.", "withdrawal amount (inr)", "withdrawal (dr)",
         "debit (dr.)", "debit amount", "withdrawal (rs)", "debit (rs)",
         "withdrawal amt", "debit amt", "withdrawals", "debit", "withdrawal",
-        "dr (rs)", "dr.", "dr"
+        "dr amt", "dr (rs)", "dr.", "dr"
     ],
     "credit": [
         "deposit amt.", "deposit amount (inr)", "deposit (cr)",
         "credit (cr.)", "credit amount", "deposit (rs)", "credit (rs)",
         "deposit amt", "credit amt", "deposits", "credit", "deposit",
-        "cr (rs)", "cr.", "cr"
+        "cr amt", "cr (rs)", "cr.", "cr"
+    ],
+    "single_amount": [
+        "amount (inr)", "amount (rs)", "amount (dr/cr)", "amount (cr/dr)",
+        "txn amount", "transaction amount", "amount"
+    ],
+    "type": [
+        "type", "txn type", "dr/cr", "cr/dr", "d/c", "c/d", "indicator", "cr/dr/nr"
     ],
     "balance": [
         "closing balance", "running balance", "balance (inr)", "balance (rs)",

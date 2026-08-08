@@ -55,6 +55,15 @@ class ParserService:
             parsed_data = self.scanned_parser.parse_content(file_bytes, file_name)
         else:
             parsed_data = self.digital_parser.parse_content(file_bytes, file_name)
+            # Automatic Fallback: If digital text parser returned < 2 rows (image-embedded or scanned PDF with header text), retry with OCR!
+            if not parsed_data.get("rows") or len(parsed_data["rows"]) < 2:
+                logger.info(f"Digital parser extracted {len(parsed_data.get('rows', []))} rows. Automatically falling back to OCR engine...")
+                log_pipeline_stage(
+                    stage_name="OCR",
+                    message="Digital parser returned < 2 rows. Retrying statement extraction using OCR engine...",
+                    file_id=statement_id,
+                )
+                parsed_data = self.scanned_parser.parse_content(file_bytes, file_name)
 
         raw_rows = parsed_data.get("rows", [])
         log_pipeline_stage(

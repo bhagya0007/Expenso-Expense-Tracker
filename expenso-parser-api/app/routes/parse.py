@@ -14,7 +14,7 @@ router = APIRouter(prefix="/api/v1", tags=["Bank Statement Parsing"])
 async def parse_statement(
     file: UploadFile = File(...),
     page: int = Query(1, ge=1, description="Page number for transaction pagination"),
-    page_size: int = Query(50, ge=1, le=500, alias="pageSize", description="Transactions per page"),
+    page_size: int = Query(10000, ge=1, le=100000, alias="pageSize", description="Transactions per page"),
     parser_service: ParserService = Depends(get_parser_service),
 ):
     if not file.filename.lower().endswith(".pdf"):

@@ -27,7 +27,7 @@ export interface StatementUploadOptions {
 export class StatementUploadService {
   private get backendParseUrl(): string {
     const baseUrl = import.meta.env.VITE_API_URL || "http://localhost:8000";
-    return `${baseUrl.replace(/\/$/, "")}/api/v1/parse`;
+    return `${baseUrl.replace(/\/$/, "")}/api/v1/parse?pageSize=10000`;
   }
 
   async uploadStatementPdf(

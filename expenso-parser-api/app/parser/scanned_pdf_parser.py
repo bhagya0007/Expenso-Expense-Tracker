@@ -96,5 +96,15 @@ class ScannedPdfParser(BaseParser):
                 logger.info(f"Bank detected from OCR text: {bank_name}")
                 return bank_id, bank_name
 
-        return "generic", "Scanned Bank Statement"
+        # Dynamic Extraction: search OCR text for any phrase containing "Bank"
+        match = re.search(r"\b([A-Za-z0-9\s&'-]{2,30}\s+BANK(?: [A-Za-z0-9\.-]+)?)\b", combined_text, re.IGNORECASE)
+        if match:
+            extracted = match.group(1).strip()
+            cleaned = re.sub(r"^(Welcome|Statement|Account|Branch|Dear|The)\s+", "", extracted, flags=re.IGNORECASE).strip()
+            if 4 <= len(cleaned) <= 45:
+                bank_id = re.sub(r"[^a-z0-9]", "", cleaned.lower())[:15] or "bank"
+                logger.info(f"Dynamic bank name extracted from OCR text: '{cleaned}'")
+                return bank_id, cleaned.title()
+
+        return "bank_statement", "Bank Statement"
 

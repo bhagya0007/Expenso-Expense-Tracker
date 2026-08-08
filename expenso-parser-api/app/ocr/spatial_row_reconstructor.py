@@ -50,32 +50,28 @@ class SpatialRowReconstructor:
         transaction_rows: List[Dict[str, Any]] = []
         active_record: Optional[Dict[str, Any]] = None
         line_counter = 1
+        last_balance: Optional[float] = None
 
         for line in lines:
-            # Sort words horizontally left-to-right
             sorted_line_words = sorted(line, key=lambda w: w["box"][0])
             line_text = " ".join(w["text"] for w in sorted_line_words).strip()
 
-            if not line_text:
-                continue
-
-            # Skip header-like lines
+            # Skip table header lines
             if self._is_header_line(line_text):
                 line_counter += 1
                 continue
 
-            # Check for date anchor
-            date_match = self._find_date_anchor(line_text)
+            date_anchor = self._find_date_anchor(line_text)
 
-            if date_match:
-                # Rule: NEW TRANSACTION ANCHOR — flush previous record
+            if date_anchor:
+                # Rule: NEW TRANSACTION ROW DETECTED
                 if active_record:
                     active_record["raw_description"] = re.sub(
                         r"\s+", " ", active_record["raw_description"]
                     ).strip()
                     transaction_rows.append(active_record)
 
-                date_val, remaining_text = date_match
+                date_val, remaining_text = date_anchor
 
                 # Extract structured fields using column boundaries
                 if column_boundaries:
@@ -83,7 +79,7 @@ class SpatialRowReconstructor:
                         sorted_line_words, column_boundaries
                     )
                 else:
-                    fields = self._extract_fields_heuristic(sorted_line_words)
+                    fields, last_balance = self._extract_fields_heuristic(sorted_line_words, last_balance)
 
                 active_record = {
                     "line_index": line_counter,
@@ -97,13 +93,12 @@ class SpatialRowReconstructor:
                 }
             elif active_record:
                 # Rule: MULTILINE NARRATION CONTINUATION
-                # Check if this line has amounts that belong to the active record
                 if column_boundaries:
                     fields = self._assign_fields_by_columns(
                         sorted_line_words, column_boundaries
                     )
                 else:
-                    fields = self._extract_fields_heuristic(sorted_line_words)
+                    fields, last_balance = self._extract_fields_heuristic(sorted_line_words, last_balance)
 
                 # Append text-only words to description
                 desc_addition = fields.get("description", line_text)
@@ -316,14 +311,16 @@ class SpatialRowReconstructor:
         return False
 
     def _extract_fields_heuristic(
-        self, line_words: List[Dict[str, Any]]
-    ) -> Dict[str, str]:
+        self, line_words: List[Dict[str, Any]], prev_balance: Optional[float] = None
+    ) -> Tuple[Dict[str, str], Optional[float]]:
         """Fallback: extracts amounts from rightmost numeric tokens.
-        Uses X-position to identify rightmost numbers as amounts
-        and mid-table long digit strings as reference numbers."""
+        Uses balance continuity (balance > prev_balance -> credit, balance < prev_balance -> debit)
+        and CR/DR keywords to accurately separate debits from credits."""
         text_parts: List[str] = []
-        amount_words: List[Dict[str, Any]] = []  # (word, x_center)
+        amount_words: List[Dict[str, Any]] = []
         ref_candidate = ""
+
+        line_full_text = " ".join(w["text"].strip() for w in line_words).upper()
 
         for word in line_words:
             text = word["text"].strip()
@@ -351,15 +348,55 @@ class SpatialRowReconstructor:
         amounts = [w["text"].strip() for w in amount_words]
 
         debit, credit, balance = "", "", ""
+        new_bal: Optional[float] = prev_balance
+
+        def parse_num(s: str) -> Optional[float]:
+            try:
+                return float(s.replace(",", ""))
+            except ValueError:
+                return None
+
         if len(amounts) == 1:
-            debit = amounts[0]
+            val = parse_num(amounts[0])
+            if " CR" in line_full_text or "CREDIT" in line_full_text or "DEPOSIT" in line_full_text:
+                credit = amounts[0]
+            else:
+                debit = amounts[0]
         elif len(amounts) == 2:
-            debit = amounts[0]
-            balance = amounts[1]
+            tx_val = parse_num(amounts[0])
+            bal_val = parse_num(amounts[1])
+
+            if bal_val is not None:
+                balance = amounts[1]
+                new_bal = bal_val
+
+            is_credit = False
+            if " CR" in line_full_text or "CREDIT" in line_full_text or "DEPOSIT" in line_full_text:
+                is_credit = True
+            elif " DR" in line_full_text or "DEBIT" in line_full_text or "WITHDRAWAL" in line_full_text:
+                is_credit = False
+            elif prev_balance is not None and bal_val is not None and tx_val is not None:
+                if bal_val > prev_balance + 0.01:
+                    is_credit = True
+
+            if is_credit:
+                credit = amounts[0]
+            else:
+                debit = amounts[0]
+
         elif len(amounts) >= 3:
-            debit = amounts[0]
-            credit = amounts[1]
-            balance = amounts[2]
+            v1 = parse_num(amounts[0])
+            v2 = parse_num(amounts[1])
+            v3 = parse_num(amounts[2])
+
+            if v3 is not None:
+                balance = amounts[2]
+                new_bal = v3
+
+            if v1 is not None and v1 > 0:
+                debit = amounts[0]
+            if v2 is not None and v2 > 0:
+                credit = amounts[1]
 
         return {
             "description": " ".join(text_parts),
@@ -367,7 +404,7 @@ class SpatialRowReconstructor:
             "debit": debit,
             "credit": credit,
             "balance": balance,
-        }
+        }, new_bal
 
     # ── Helpers ───────────────────────────────────────────────────────
 

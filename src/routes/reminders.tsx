@@ -107,7 +107,10 @@ function RemindersPage() {
                       <Badge variant="secondary" className="text-[10px]">{r.category}</Badge>
                       {r.autoPay && <Badge className="bg-emerald-500/15 text-[10px] text-emerald-300">Auto-pay</Badge>}
                     </div>
-                    <div className="text-xs text-muted-foreground">Due {new Date(r.dueDate).toLocaleDateString("en-IN", { day: "numeric", month: "short" })} · {days <= 0 ? "today" : `in ${days} day${days === 1 ? "" : "s"}`}</div>
+                    <div className="text-xs text-muted-foreground">
+                      <div>Due {new Date(r.dueDate).toLocaleDateString("en-IN", { day: "numeric", month: "short" })} &bull; {days <= 0 ? "today" : `in ${days} day${days === 1 ? "" : "s"}`}</div>
+                      <div className="text-[10px] text-muted-foreground/75 font-medium">{new Date(r.dueDate).toLocaleDateString("en-IN", { weekday: "long" })}</div>
+                    </div>
                   </div>
                   <div className="text-right">
                     <div className="font-display text-lg font-bold">{inr(r.amount)}</div>

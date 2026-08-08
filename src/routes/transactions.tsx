@@ -32,8 +32,8 @@ const acQO = queryOptions({ queryKey: ["accounts"], queryFn: () => api.listAccou
 
 export const Route = createFileRoute("/transactions")({
   loader: ({ context }) => {
-    context.queryClient.ensureQueryData(txQO);
-    context.queryClient.ensureQueryData(acQO);
+    context.queryClient.fetchQuery(txQO);
+    context.queryClient.fetchQuery(acQO);
   },
   component: () => (
     <Suspense fallback={<div className="p-6"><Skeleton className="h-96 w-full rounded-2xl" /></div>}>
@@ -119,10 +119,13 @@ function TransactionsPage() {
 
   const del = useMutation({
     mutationFn: (id: string) => api.deleteTransaction(id),
+    onMutate: (id) => {
+      qc.setQueryData(["transactions"], (old: Transaction[] = []) => old.filter((t) => t.id !== id));
+    },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["transactions"] });
-      qc.invalidateQueries({ queryKey: ["accounts"] });
-      qc.invalidateQueries({ queryKey: ["insights"] });
+      qc.resetQueries({ queryKey: ["transactions"] });
+      qc.resetQueries({ queryKey: ["accounts"] });
+      qc.resetQueries({ queryKey: ["insights"] });
       toast.success("Transaction deleted");
     },
   });
@@ -132,11 +135,15 @@ function TransactionsPage() {
       await Promise.all(ids.map((id) => api.deleteTransaction(id)));
       return ids.length;
     },
+    onMutate: (ids) => {
+      const idSet = new Set(ids);
+      qc.setQueryData(["transactions"], (old: Transaction[] = []) => old.filter((t) => !idSet.has(t.id)));
+    },
     onSuccess: (count) => {
       setSelected(new Set());
-      qc.invalidateQueries({ queryKey: ["transactions"] });
-      qc.invalidateQueries({ queryKey: ["accounts"] });
-      qc.invalidateQueries({ queryKey: ["insights"] });
+      qc.resetQueries({ queryKey: ["transactions"] });
+      qc.resetQueries({ queryKey: ["accounts"] });
+      qc.resetQueries({ queryKey: ["insights"] });
       toast.success(`Deleted ${count} transaction${count === 1 ? "" : "s"}`);
     },
     onError: () => toast.error("Could not delete selected transactions"),
@@ -144,15 +151,19 @@ function TransactionsPage() {
 
   const deleteAllMut = useMutation({
     mutationFn: async () => {
-      const allIds = txs.map((t) => t.id);
-      await Promise.all(allIds.map((id) => api.deleteTransaction(id)));
-      return allIds.length;
+      const count = txs.length;
+      await api.deleteAllTransactions();
+      return count;
+    },
+    onMutate: () => {
+      qc.setQueryData(["transactions"], []);
     },
     onSuccess: (count) => {
       setSelected(new Set());
-      qc.invalidateQueries({ queryKey: ["transactions"] });
-      qc.invalidateQueries({ queryKey: ["accounts"] });
-      qc.invalidateQueries({ queryKey: ["insights"] });
+      qc.setQueryData(["transactions"], []);
+      qc.resetQueries({ queryKey: ["transactions"] });
+      qc.resetQueries({ queryKey: ["accounts"] });
+      qc.resetQueries({ queryKey: ["insights"] });
       toast.success(`Deleted all ${count} transactions`);
     },
     onError: () => toast.error("Could not delete transactions"),
@@ -392,7 +403,8 @@ function TransactionsPage() {
                           />
                         </td>
                         <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">
-                          {new Date(t.date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}
+                          <div className="font-medium text-foreground">{new Date(t.date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}</div>
+                          <div className="text-[11px] text-muted-foreground/80 font-normal">{new Date(t.date).toLocaleDateString("en-IN", { weekday: "long" })}</div>
                         </td>
                         <td className="px-4 py-3">
                           <div className="font-semibold">{t.merchant || t.category || "Transaction"}</div>

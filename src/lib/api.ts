@@ -2,7 +2,8 @@
  * API layer — Instant Optimistic Store + Async Firebase Cloud Firestore Sync.
  */
 import { auth, db } from "@/integrations/firebase/client";
-import { collection, doc, getDocs, setDoc, deleteDoc, updateDoc, onSnapshot } from "firebase/firestore";
+import { onAuthStateChanged } from "firebase/auth";
+import { collection, doc, getDocs, setDoc, deleteDoc, updateDoc, onSnapshot, writeBatch } from "firebase/firestore";
 import type { Account, Budget, Insight, Reminder, Transaction } from "./types";
 
 type Store = {
@@ -109,16 +110,20 @@ function setupRealtimeListeners(uid: string) {
   }
 }
 
+
+
 async function syncGuestDataToFirestore(uid: string, s: Store) {
   try {
     await ensureUserDoc(uid);
     for (const tx of s.transactions) {
-      const docRef = doc(db, "users", uid, "transactions", tx.id);
-      await setDoc(docRef, cleanObjectForFirestore({ ...tx }), { merge: true });
+      const docRefSub = doc(db, "users", uid, "transactions", tx.id);
+      const payload = cleanObjectForFirestore({ ...tx, uid, userId: uid, createdAt: new Date().toISOString() });
+      await setDoc(docRefSub, payload, { merge: true });
     }
     for (const acc of s.accounts) {
-      const docRef = doc(db, "users", uid, "accounts", acc.id);
-      await setDoc(docRef, cleanObjectForFirestore({ ...acc }), { merge: true });
+      const docRefSub = doc(db, "users", uid, "accounts", acc.id);
+      const payload = cleanObjectForFirestore({ ...acc, uid, userId: uid, createdAt: new Date().toISOString() });
+      await setDoc(docRefSub, payload, { merge: true });
     }
   } catch (err) {
     console.error("syncGuestDataToFirestore error:", err);
@@ -127,11 +132,26 @@ async function syncGuestDataToFirestore(uid: string, s: Store) {
 
 function currentUid(): string | null {
   if (typeof window === "undefined") return null;
-  const uid = auth.currentUser?.uid ?? null;
+  const uid = auth.currentUser?.uid || (typeof localStorage !== "undefined" ? localStorage.getItem("expenso_auth_uid") : null) || null;
   if (uid) {
     setupRealtimeListeners(uid);
   }
   return uid;
+}
+
+if (typeof window !== "undefined") {
+  onAuthStateChanged(auth, async (user) => {
+    if (user) {
+      localStorage.setItem("expenso_auth_uid", user.uid);
+      setupRealtimeListeners(user.uid);
+      const store = read(user.uid);
+      if (store.transactions.length > 0) {
+        await syncGuestDataToFirestore(user.uid, store);
+      }
+    } else {
+      localStorage.removeItem("expenso_auth_uid");
+    }
+  });
 }
 
 function read(uid: string | null): Store {
@@ -339,8 +359,9 @@ export const api = {
     if (uid) {
       try {
         await ensureUserDoc(uid);
-        const docRef = doc(db, "users", uid, "transactions", tx.id);
-        await setDoc(docRef, cleanObjectForFirestore({ ...tx }));
+        const payload = cleanObjectForFirestore({ ...tx, uid, userId: uid, createdAt: new Date().toISOString() });
+        const docRefSub = doc(db, "users", uid, "transactions", tx.id);
+        await setDoc(docRefSub, payload, { merge: true });
         await syncAccountsToFirestore(uid);
       } catch (err) {
         console.error("Firestore setDoc tx error:", err);
@@ -370,8 +391,9 @@ export const api = {
       try {
         await ensureUserDoc(uid);
         for (const tx of txs) {
-          const docRef = doc(db, "users", uid, "transactions", tx.id);
-          await setDoc(docRef, cleanObjectForFirestore({ ...tx }));
+          const payload = cleanObjectForFirestore({ ...tx, uid, userId: uid, createdAt: new Date().toISOString() });
+          const docRefSub = doc(db, "users", uid, "transactions", tx.id);
+          await setDoc(docRefSub, payload, { merge: true });
         }
         await syncAccountsToFirestore(uid);
       } catch (err) {
@@ -417,6 +439,31 @@ export const api = {
         await syncAccountsToFirestore(uid);
       } catch (err) {
         console.error("Firestore deleteTx error:", err);
+      }
+    }
+  },
+
+  async deleteAllTransactions(): Promise<void> {
+    const uid = currentUid();
+    mutate((s) => {
+      const nextAccs = computeAccountBalances(s.accounts, []);
+      return { ...s, transactions: [], accounts: nextAccs };
+    });
+
+    if (uid) {
+      try {
+        const colRef = collection(db, "users", uid, "transactions");
+        const snap = await getDocs(colRef);
+        if (!snap.empty) {
+          const batch = writeBatch(db);
+          snap.docs.forEach((docSnap) => {
+            batch.delete(docSnap.ref);
+          });
+          await batch.commit();
+        }
+        await syncAccountsToFirestore(uid);
+      } catch (err) {
+        console.error("Firestore deleteAllTransactions error:", err);
       }
     }
   },
@@ -545,12 +592,14 @@ export const api = {
         if (!snap.empty) {
           const remote: Budget[] = snap.docs.map((docSnap) => {
             const data = docSnap.data();
+            const limit = Number(data.limit ?? data.allocated ?? data.amount ?? 5000);
+            const spent = Number(data.spent ?? 0);
             return {
               id: docSnap.id,
-              category: data.category,
-              allocated: Number(data.allocated),
-              spent: Number(data.spent),
-              period: data.period,
+              category: data.category || "Food & Dining",
+              limit,
+              spent,
+              period: data.period || "monthly",
             };
           });
           const remoteIds = new Set(remote.map((b) => b.id));
@@ -566,14 +615,16 @@ export const api = {
   },
 
   async createBudget(input: Omit<Budget, "id">): Promise<Budget> {
-    const b: Budget = { ...input, id: `b-${Date.now()}` };
+    const limit = Number((input as any).limit ?? (input as any).allocated ?? (input as any).amount ?? 5000);
+    const spent = Number(input.spent ?? 0);
+    const b: Budget = { ...input, limit, spent, id: `b-${Date.now()}` };
     const uid = currentUid();
     mutate((s) => ({ ...s, budgets: [...s.budgets, b] }));
     if (uid) {
       try {
         await ensureUserDoc(uid);
         const docRef = doc(db, "users", uid, "budgets", b.id);
-        await setDoc(docRef, { ...b });
+        await setDoc(docRef, cleanObjectForFirestore({ ...b, allocated: limit, limit, spent, uid, userId: uid, createdAt: new Date().toISOString() }));
       } catch (err) {
         console.error("Firestore setDoc budget error:", err);
       }

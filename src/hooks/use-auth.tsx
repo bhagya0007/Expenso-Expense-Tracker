@@ -26,12 +26,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const unsub = onAuthStateChanged(auth, (fbUser) => {
         if (fbUser) {
-          if (!fbUser.emailVerified && !fbUser.uid.startsWith("user_")) {
-            setUser(null);
-            setProfile(null);
-            setLoading(false);
-            return;
-          }
           const mappedUser = {
             uid: fbUser.uid,
             id: fbUser.uid,

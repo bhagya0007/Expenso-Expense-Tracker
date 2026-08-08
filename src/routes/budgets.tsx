@@ -42,9 +42,9 @@ function BudgetsPage() {
   const [editing, setEditing] = useState<Budget | null>(null);
   const [draft, setDraft] = useState<Draft>({ category: "Food & Dining", limit: 5000, spent: 0 });
 
-  const totalLimit = useMemo(() => local.reduce((s, b) => s + b.limit, 0), [local]);
-  const totalSpent = useMemo(() => local.reduce((s, b) => s + b.spent, 0), [local]);
-  const overall = totalLimit ? Math.min(100, (totalSpent / totalLimit) * 100) : 0;
+  const totalLimit = useMemo(() => local.reduce((s, b) => s + (Number(b.limit) || Number((b as any).amount) || 0), 0), [local]);
+  const totalSpent = useMemo(() => local.reduce((s, b) => s + (Number(b.spent) || 0), 0), [local]);
+  const overall = totalLimit > 0 ? Math.min(100, (totalSpent / totalLimit) * 100) : 0;
 
   const createM = useMutation({ mutationFn: (b: Omit<Budget, "id">) => api.createBudget(b), onSuccess: invalidate });
   const updateM = useMutation({ mutationFn: (v: { id: string; patch: Partial<Omit<Budget, "id">> }) => api.updateBudget(v.id, v.patch), onSuccess: invalidate });
@@ -56,8 +56,10 @@ function BudgetsPage() {
     setOpen(true);
   }
   function openEdit(b: Budget) {
+    const bLimit = Number(b.limit) || Number((b as any).amount) || 5000;
+    const bSpent = Number(b.spent) || 0;
     setEditing(b);
-    setDraft({ category: b.category, limit: b.limit, spent: b.spent });
+    setDraft({ category: b.category, limit: bLimit, spent: bSpent });
     setOpen(true);
   }
   async function save() {
@@ -124,8 +126,10 @@ function BudgetsPage() {
 
       <div className="grid gap-4 md:grid-cols-2">
         {local.map((b) => {
-          const pct = b.limit ? Math.min(100, (b.spent / b.limit) * 100) : 0;
-          const over = b.spent > b.limit;
+          const limitVal = Number(b.limit) || Number((b as any).amount) || 0;
+          const spentVal = Number(b.spent) || 0;
+          const pct = limitVal > 0 ? Math.min(100, (spentVal / limitVal) * 100) : 0;
+          const over = spentVal > limitVal;
           const warn = pct > 80 && !over;
           return (
             <Card key={b.id} className="glass p-5">
@@ -147,11 +151,11 @@ function BudgetsPage() {
                 </div>
               </div>
               <div className="mt-4 flex items-baseline justify-between">
-                <div className="font-numeric text-2xl font-semibold">{inr(b.spent)}</div>
-                <div className="text-sm text-muted-foreground">of {inr(b.limit)}</div>
+                <div className="font-numeric text-2xl font-semibold">{inr(spentVal)}</div>
+                <div className="text-sm text-muted-foreground">of {inr(limitVal)}</div>
               </div>
               <Progress value={pct} className="mt-3 h-2" />
-              <div className="mt-2 text-xs text-muted-foreground">{over ? `${inr(b.spent - b.limit)} over budget` : `${inr(b.limit - b.spent)} left`}</div>
+              <div className="mt-2 text-xs text-muted-foreground">{over ? `${inr(spentVal - limitVal)} over budget` : `${inr(limitVal - spentVal)} left`}</div>
             </Card>
           );
         })}

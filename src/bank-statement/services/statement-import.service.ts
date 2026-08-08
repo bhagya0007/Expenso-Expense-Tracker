@@ -54,29 +54,19 @@ export class StatementImportService {
     const newTxToStore: BankTransaction[] = [];
 
     for (const tx of transactionsToImport) {
-      const fp = `${tx.rawDate || tx.date}|${(tx.description || "").trim().toUpperCase()}|${tx.amount}|${tx.type}`;
-
-      if (existingFingerprints.has(fp)) {
-        skippedDuplicatesCount++;
+      importedCount++;
+      if (tx.type === "debit") {
+        totalDebits += tx.amount;
       } else {
-        existingFingerprints.add(fp);
-        importedCount++;
-
-        if (tx.type === "debit") {
-          totalDebits += tx.amount;
-        } else {
-          totalCredits += tx.amount;
-        }
-
-        // Store with source: "bank_statement"
-        const finalTx: BankTransaction & { source: string } = {
-          ...tx,
-          statementId: statement.id,
-          source: "bank_statement",
-        };
-
-        newTxToStore.push(finalTx as BankTransaction);
+        totalCredits += tx.amount;
       }
+
+      const finalTx: BankTransaction & { source: string } = {
+        ...tx,
+        statementId: statement.id,
+        source: "bank_statement",
+      };
+      newTxToStore.push(finalTx as BankTransaction);
     }
 
     // Persist updated transactions and statement metadata
@@ -86,6 +76,43 @@ export class StatementImportService {
     try {
       localStorage.setItem(this.STORAGE_KEY, JSON.stringify(updatedTxList));
       localStorage.setItem(this.STATEMENTS_KEY, JSON.stringify(updatedStatements));
+
+      // Import directly into main Expenso transaction ledger & Firebase store
+      try {
+        const { api } = await import("@/lib/api");
+        const accounts = await api.listAccounts();
+        const targetAcc = accounts.length > 0 ? accounts[0] : null;
+
+        const mainAppTxs = newTxToStore.map((bt) => {
+          const isIncome = bt.type === "credit";
+          let dateStr = new Date().toISOString().slice(0, 10);
+          try {
+            if (bt.date) {
+              const d = new Date(bt.date);
+              if (!isNaN(d.getTime())) {
+                dateStr = d.toISOString().slice(0, 10);
+              }
+            }
+          } catch {}
+
+          return {
+            type: (isIncome ? "income" : "expense") as "income" | "expense",
+            amount: Number(bt.amount) || 0,
+            category: (isIncome ? "Salary" : "Other") as any,
+            merchant: bt.description || bt.merchantName || "Bank Transaction",
+            date: dateStr,
+            paymentMethod: "Bank" as const,
+            accountId: targetAcc ? targetAcc.id : "",
+            notes: `Imported from ${statement.bankName} statement (${statement.fileName})`,
+          };
+        });
+
+        if (mainAppTxs.length > 0) {
+          await api.createTransactionsBulk(mainAppTxs);
+        }
+      } catch (apiErr) {
+        console.warn("Failed to sync transactions to main Expenso store:", apiErr);
+      }
 
       // Dispatch custom DOM event to trigger instant dashboard metric updates
       window.dispatchEvent(

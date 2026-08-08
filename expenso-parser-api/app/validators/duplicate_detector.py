@@ -22,7 +22,7 @@ class DuplicateDetector:
         amount_part = f"{tx.amount:.2f}"
         balance_part = f"{tx.balance:.2f}" if tx.balance is not None else "0.00"
 
-        raw_fingerprint_string = f"{date_part}|{desc_ref_part}|{amount_part}|{balance_part}"
+        raw_fingerprint_string = f"{tx.page_index}|{tx.line_index}|{date_part}|{desc_ref_part}|{amount_part}|{balance_part}"
         return hashlib.sha256(raw_fingerprint_string.encode("utf-8")).hexdigest()
 
     def filter_duplicate_transactions(

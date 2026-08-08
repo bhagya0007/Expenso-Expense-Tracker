@@ -44,8 +44,28 @@ export const transactions: Transaction[] = (() => {
       accountId: "a1",
     });
   }
-  // 60 random expenses spread across last 60 days
-  for (let i = 0; i < 60; i++) {
+  // Ensure active daily expenses for recent days up to today
+  for (let d = 0; d < 12; d++) {
+    const m = pick(merchants);
+    const dateObj = new Date(now);
+    dateObj.setDate(dateObj.getDate() - d);
+    const y = dateObj.getFullYear();
+    const monthStr = String(dateObj.getMonth() + 1).padStart(2, "0");
+    const dayStr = String(dateObj.getDate()).padStart(2, "0");
+    list.push({
+      id: `tx-daily-${d}`,
+      type: "expense",
+      amount: Math.round(400 + rng() * 2200),
+      category: m.category,
+      merchant: m.name,
+      date: `${y}-${monthStr}-${dayStr}`,
+      paymentMethod: m.method,
+      accountId: pick(accounts).id,
+    });
+  }
+
+  // 50 additional expenses spread across last 60 days
+  for (let i = 0; i < 50; i++) {
     const m = pick(merchants);
     const daysAgo = Math.floor(rng() * 60);
     const d = new Date(now);

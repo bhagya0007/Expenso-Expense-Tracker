@@ -101,7 +101,51 @@ class TransactionNormalizer:
         normalized_list: List[BankTransactionModel] = []
         for r in raw_rows:
             tx = self.normalize_row(r, statement_id=statement_id)
-            normalized_list.append(tx)
+            # Filter out zero amount non-transaction noise rows
+            if tx.amount > 0:
+                normalized_list.append(tx)
+
+        # 2-Pass Universal Balance Reconciliation
+        # Step 1: Detect if statement order is Chronological or Reverse Chronological
+        fwd_score = 0
+        rev_score = 0
+        prev_bal: Optional[float] = None
+
+        for tx in normalized_list:
+            if tx.balance is not None and prev_bal is not None and tx.amount > 0:
+                delta = round(tx.balance - prev_bal, 2)
+                if abs(delta - tx.amount) < 0.1 or abs(delta + tx.amount) < 0.1:
+                    fwd_score += 1
+                if abs(-delta - tx.amount) < 0.1 or abs(-delta + tx.amount) < 0.1:
+                    rev_score += 1
+            if tx.balance is not None:
+                prev_bal = tx.balance
+
+        is_reverse_chronological = rev_score > fwd_score
+        if is_reverse_chronological:
+            logger.info(f"TransactionNormalizer detected REVERSE CHRONOLOGICAL statement layout (score {rev_score} > {fwd_score})")
+
+        # Step 2: Apply Directional Balance Reconciliation to prove Debit vs Credit
+        prev_bal = None
+        for tx in normalized_list:
+            if tx.balance is not None and prev_bal is not None and tx.amount > 0:
+                delta = round(tx.balance - prev_bal, 2)
+                if is_reverse_chronological:
+                    # In reverse chronological, balance growing (delta < 0) going downward means CREDIT
+                    if abs(delta + tx.amount) < 0.1:
+                        tx.type = TransactionType.CREDIT
+                    elif abs(delta - tx.amount) < 0.1:
+                        tx.type = TransactionType.DEBIT
+                else:
+                    # In chronological, balance growing (delta > 0) going downward means CREDIT
+                    if abs(delta - tx.amount) < 0.1:
+                        tx.type = TransactionType.CREDIT
+                    elif abs(delta + tx.amount) < 0.1:
+                        tx.type = TransactionType.DEBIT
+
+            if tx.balance is not None:
+                prev_bal = tx.balance
+
         logger.info(f"TransactionNormalizer converted {len(normalized_list)} raw rows into BankTransactionModel list")
         return normalized_list
 
